@@ -10,18 +10,13 @@ from dataset import GeometricBreaksDataset
 import h5py
 
 
-def save_h5(data, path):
-    f = h5py.File(path, 'w')
-    a = data.data.cpu().numpy()
-    f.create_dataset('data', data=a)
-    f.close()
-
 def save_obj(point, path):
     n = point.shape[0]
     with open(path, 'w') as f:
         for i in range(n):
-            f.write("v {0} {1} {2}\n".format(point[i][0],point[i][1],point[i][2]))
+            f.write("v {0} {1} {2}\n".format(point[i][0], point[i][1], point[i][2]))
     f.close()
+
 
 def test():
     dataset_test = GeometricBreaksDataset(args.chspath, prefix="test")
@@ -69,7 +64,7 @@ def test():
                     path = os.path.join(os.path.dirname(args.load_model), args.dataset, 'all', str(label[j]))
                     if not os.path.isdir(path):
                         os.makedirs(path)
-                    path = os.path.join(path, str(obj[j])+'.obj')
+                    path = os.path.join(path, str(obj[j]) + '.obj')
                     save_obj(result_dict['out2'][j], path)
 
         category_log = 'Loss per category:\n'
@@ -87,11 +82,12 @@ def test():
         logging.info(overview_log)
         print(overview_log)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test config file')
     parser.add_argument('-c', '--config', help='path to config file', required=True)
     arg = parser.parse_args()
-    config_path = os.path.join('./cfgs',arg.config)
+    config_path = os.path.join('./cfgs', arg.config)
     args = munch.munchify(yaml.safe_load(open(config_path)))
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device
 
