@@ -11,7 +11,7 @@ import yaml
 import os
 import sys
 import argparse
-from dataset import C3D_h5, PCN_pcd
+from dataset import C3D_h5, PCN_pcd, GeometricBreaksDataset
 
 
 def train():
@@ -27,8 +27,11 @@ def train():
     elif args.dataset == 'c3d':
         dataset = C3D_h5(args.c3dpath, prefix="train")
         dataset_test = C3D_h5(args.c3dpath, prefix="val")
+    elif args.dataset == 'chs':
+        dataset = GeometricBreaksDataset(args.chspath, prefix="train")
+        dataset_test = GeometricBreaksDataset(args.chspath, prefix="val")
     else:
-        raise ValueError('dataset is not exist')
+        raise ValueError('dataset does not exist')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size,
                                              shuffle=True, num_workers=int(args.workers))
     dataloader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size,

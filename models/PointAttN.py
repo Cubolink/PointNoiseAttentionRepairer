@@ -191,8 +191,11 @@ class Model(nn.Module):
         elif args.dataset == 'c3d':
             step1 = 1
             step2 = 4
+        elif args.dataset == 'chs':
+            step1 = 4
+            step2 = 8
         else:
-            ValueError('dataset is not exist')
+            raise ValueError('dataset does not exist')
 
         self.encoder = PCT_encoder()
 

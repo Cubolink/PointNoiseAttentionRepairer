@@ -1,4 +1,7 @@
+import logging
 import os
+import re
+
 import open3d as o3d
 import torch
 import numpy as np
@@ -8,6 +11,9 @@ import math
 import transforms3d
 import random
 from tensorpack import dataflow
+
+
+logger = logging.getLogger(__name__)
 
 
 class PCN_pcd(data.Dataset):
@@ -262,6 +268,199 @@ class C3D_h5(data.Dataset):
             partial = torch.from_numpy(partial)
             label = (self.labels[index])
             return label, partial, partial
+
+
+class GeometricBreaksDataset:
+    class BrokenPointsField:
+        ''' Point Field.
+
+        It provides the field to load point data. This is used for the points
+        randomly sampled on the mesh, but separated in different files, following Geometric Breaks Dataset structure.
+
+        Args:
+            file_name (str): file name
+            transform (list): list of transformations which will be applied to the points tensor
+            multi_files (callable): number of files
+
+        '''
+
+        def __init__(self, file_name, unpackbits=False, multi_files=None, stddev=0.1):
+            self.file_name = file_name
+            self.file_base_name, self.file_extension = os.path.splitext(file_name)
+            self.unpackbits = unpackbits
+            self.multi_files = multi_files
+            self.stddev = stddev
+
+        def load(self, model_path, idx, category):
+            ''' Loads the data point.
+
+            Args:
+                model_path (str): path to model
+                idx (int): ID of data point
+                category (int): index of category
+            '''
+            if self.multi_files is None:
+                # file_path = os.path.join(model_path, self.file_name)
+                broken_file_path = os.path.join(model_path, self.file_base_name + '_b' + self.file_extension)
+                restoration_file_path = os.path.join(model_path, self.file_base_name + '_r' + self.file_extension)
+                complete_file_path = os.path.join(model_path, self.file_base_name + '_c' + self.file_extension)
+            else:
+                if self.multi_files >= 0:
+                    num = np.random.randint(self.multi_files)
+                else:
+                    # range may vary, so we choose from the folder
+                    pattern = re.compile("^" + self.file_base_name + "_b_" + r"(\d+)\.npz")
+                    files = set(
+                        [file for file in os.listdir(model_path) if os.path.isfile(os.path.join(model_path, file))])
+                    # then get all the available numbers
+                    nums = []
+                    for file in files:
+                        match = pattern.match(file)
+                        if match is not None:
+                            d = match.group(1)
+                            # check if _r_ exists first
+                            if self.file_base_name + f"_r_{d}.npz" in files:  # in keyword is fast in sets
+                                nums.append(match.group(1))
+                    num = np.random.choice(nums)
+
+                # file_path = os.path.join(model_path, self.file_name, '%s_%02d.npz' % (self.file_name, num))
+
+                # model_{b, r}_{%d}.obj
+
+                broken_file_path = os.path.join(model_path, self.file_base_name + f'_b_{num}' + self.file_extension)
+                restoration_file_path = os.path.join(model_path,
+                                                     self.file_base_name + f'_r_{num}' + self.file_extension)
+                complete_file_path = os.path.join(model_path, self.file_base_name + '_c' + self.file_extension)
+
+            try:
+                broken_points_dict = np.load(broken_file_path)
+                restoration_points_dict = np.load(restoration_file_path)
+                complete_points_dict = np.load(complete_file_path)
+            except:
+                print("Error on loading something")
+                print(broken_file_path, restoration_file_path, complete_file_path)
+                raise
+
+            # Break symmetry if given in float16:
+            def break_symmetry(points):
+                if points.dtype == np.float16:
+                    points = points.astype(np.float32)
+                    points += 1e-4 * np.random.randn(*points.shape)
+                return points
+
+            broken_points = break_symmetry(broken_points_dict['points'])
+            restoration_points = break_symmetry(restoration_points_dict['points'])
+            complete_points = break_symmetry(complete_points_dict['points'])
+
+            return category, broken_points, complete_points
+
+    def __init__(self, dataset_folder, prefix,
+                 categories=None, no_except=True, transform=None, cfg=None):
+        ''' Initialization of the the 3D shape dataset.
+
+        Args:
+            dataset_folder (str): dataset folder
+            fields (dict): dictionary of fields
+            split (str): which split is used
+            categories (list): list of categories to use
+            no_except (bool): no exception
+            transform (callable): transformation applied to data points
+            cfg (yaml): config file
+        '''
+        # Get split
+        splits = {
+            'train': 'train',
+            'val': 'val',
+            'test': 'tests',
+        }
+        split = splits[prefix]
+        dataset_folder = os.path.expanduser(dataset_folder)
+        # Attributes
+        self.dataset_folder = dataset_folder
+        self.prefix = prefix
+        self.field = self.BrokenPointsField('pointcloud.npz', unpackbits=False, multi_files=-1)
+        self.no_except = no_except
+        self.transform = transform
+        self.cfg = cfg
+        self.sample = 1
+
+        # If categories is None, use all subfolders
+        if categories is None:
+            categories = os.listdir(dataset_folder)
+            categories = [c for c in categories
+                          if os.path.isdir(os.path.join(dataset_folder, c))]
+
+        self.label_map = {}
+        for i, c in enumerate(categories):
+            self.label_map[c] = i
+        self.label_map_inverse = categories
+
+        # Get all models
+        self.models = []
+        for c_idx, c in enumerate(categories):
+            subpath = os.path.join(dataset_folder, c)
+            if not os.path.isdir(subpath):
+                logger.warning('Category %s does not exist in dataset.' % c)
+
+            if split is None:
+                self.models += [
+                    {'category': c, 'model': m} for m in
+                    [d for d in os.listdir(subpath) if (os.path.isdir(os.path.join(subpath, d)) and d != '')]
+                ]
+
+            else:
+                split_file = os.path.join(subpath, split + '.lst')
+                with open(split_file, 'r') as f:
+                    models_c = f.read().split('\n')
+
+                if '' in models_c:
+                    models_c.remove('')
+
+                self.models += [
+                    {'category': c, 'model': m}
+                    for m in models_c
+                ]
+
+    def __len__(self):
+        return len(self.models)
+
+    def __getitem__(self, idx):
+        ''' Returns an item of the dataset.
+
+        Args:
+            idx (int): ID of data point
+        '''
+        category = self.models[idx]['category']
+        model = self.models[idx]['model']
+
+        model_path = os.path.join(self.dataset_folder, category, model)
+
+        try:
+            label, partial, complete = self.field.load(model_path, idx, category)
+        except Exception:
+            if self.no_except:
+                logger.warn(
+                    'Error occured when loading field %s of model %s'
+                    % ("BrokenPointsField", model)
+                )
+                return None
+            else:
+                raise
+
+        # TODO: they use permutation, it seems to be a better method
+        # SubsampleAll
+        partial_sample_indices = np.random.randint(partial.shape[0], size=2048)
+        complete_sample_indices = np.random.randint(complete.shape[0], size=2048)
+        partial = partial[partial_sample_indices]
+        complete = complete[complete_sample_indices]
+
+        complete = torch.from_numpy(complete)
+        partial = torch.from_numpy(partial)
+
+        if self.prefix == 'test':
+            return label, partial, complete, model
+        else:
+            return label, partial, complete
 
 
 if __name__ == '__main__':
