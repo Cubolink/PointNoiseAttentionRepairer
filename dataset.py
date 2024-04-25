@@ -170,7 +170,7 @@ class C3D_h5(data.Dataset):
                          '03001627': '3', '03636649': '4', '04256520': '5',
                          '04379243': '6', '04530566': '7', 'all': '8'}
 
-        if prefix is not "test":
+        if prefix != "test":
             self.input_data, self.labels = self.get_data(os.path.join(self.file_path, 'partial'))
             self.gt_data, _ = self.get_data(os.path.join(self.file_path, 'gt'))
             print(len(self.gt_data), len(self.labels))
