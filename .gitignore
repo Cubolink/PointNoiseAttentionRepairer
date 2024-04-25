@@ -112,3 +112,10 @@ venv.bak/
 ##################
 # mypy
 #.mypy_cache/
+
+# IDE related
+.idea/
+
+# experiment related
+log/
+datasets/
