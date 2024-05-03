@@ -7,7 +7,11 @@ import torch.nn.functional as F
 import math
 from utils.model_utils import *
 
-from utils.mm3d_pn2 import furthest_point_sample, gather_points
+from pytorch3d.ops import sample_farthest_points
+
+
+def gather_points(t, indices):
+    return torch.gather(t, 2, indices.unsqueeze(1).expand(-1, t.size(1), -1))
 
 
 class cross_transformer(nn.Module):
@@ -144,25 +148,25 @@ class PCT_encoder(nn.Module):
         x0 = self.conv2(x)
 
         # GDP
-        idx_0 = furthest_point_sample(points.transpose(1, 2).contiguous(), N // 4)
+        points, idx_0 = sample_farthest_points(points.transpose(1, 2).contiguous(), K=N//4)
         x_g0 = gather_points(x0, idx_0)
-        points = gather_points(points, idx_0)
+        points = points.transpose(1, 2)
         x1 = self.sa1(x_g0, x0).contiguous()
         x1 = torch.cat([x_g0, x1], dim=1)
         # SFA
         x1 = self.sa1_1(x1,x1).contiguous()
         # GDP
-        idx_1 = furthest_point_sample(points.transpose(1, 2).contiguous(), N // 8)
+        points, idx_1 = sample_farthest_points(points.transpose(1, 2).contiguous(), K=N//8)
         x_g1 = gather_points(x1, idx_1)
-        points = gather_points(points, idx_1)
+        points = points.transpose(1, 2)
         x2 = self.sa2(x_g1, x1).contiguous()  # C*2, N
         x2 = torch.cat([x_g1, x2], dim=1)
         # SFA
         x2 = self.sa2_1(x2, x2).contiguous()
         # GDP
-        idx_2 = furthest_point_sample(points.transpose(1, 2).contiguous(), N // 16)
+        _, idx_2 = sample_farthest_points(points.transpose(1, 2).contiguous(), K=N//16)
         x_g2 = gather_points(x2, idx_2)
-        # points = gather_points(points, idx_2)
+        # points = points.transpose(1, 2)
         x3 = self.sa3(x_g2, x2).contiguous()  # C*4, N/4
         x3 = torch.cat([x_g2, x3], dim=1)
         # SFA
@@ -207,7 +211,8 @@ class Model(nn.Module):
         feat_g, coarse = self.encoder(x)
 
         new_x = torch.cat([x,coarse],dim=2)
-        new_x = gather_points(new_x, furthest_point_sample(new_x.transpose(1, 2).contiguous(), 512))
+        new_x, _ = sample_farthest_points(new_x.transpose(1, 2).contiguous(), K=512)
+        new_x = new_x.transpose(1, 2)
 
         fine, feat_fine = self.refine(None, new_x, feat_g)
         fine1, feat_fine1 = self.refine1(feat_fine, fine, feat_g)
@@ -218,10 +223,10 @@ class Model(nn.Module):
 
         if is_training:
             loss3, _ = calc_cd(fine1, gt)
-            gt_fine1 = gather_points(gt.transpose(1, 2).contiguous(), furthest_point_sample(gt, fine.shape[1])).transpose(1, 2).contiguous()
+            gt_fine1, _ = sample_farthest_points(gt, K=fine.shape[1])
 
             loss2, _ = calc_cd(fine, gt_fine1)
-            gt_coarse = gather_points(gt_fine1.transpose(1, 2).contiguous(), furthest_point_sample(gt_fine1, coarse.shape[1])).transpose(1, 2).contiguous()
+            gt_coarse, _ = sample_farthest_points(gt_fine1, K=coarse.shape[1])
 
             loss1, _ = calc_cd(coarse, gt_coarse)
 
