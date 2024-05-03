@@ -14,14 +14,11 @@ pip install -r requirements.txt
 
 ### Compile Pytorch 3rd-party modules
 
-please compile Pytorch 3rd-party modules [ChamferDistancePytorch](https://github.com/ThibaultGROUEIX/ChamferDistancePytorch) and [mm3d_pn2](https://github.com/Colin97/MSN-Point-Cloud-Completion). A simple way is using the following command:
+please compile Pytorch 3rd-party modules [ChamferDistancePytorch](https://github.com/ThibaultGROUEIX/ChamferDistancePytorch). A simple way is using the following command:
 
 ```
 cd $PointAttN_Home/utils/ChamferDistancePytorch/chamfer3D
 python setup.py install
-
-cd $PointAttN_Home/utils/mm3d_pn2
-python setup.py build_ext --inplace
 ```
 
 ## 2. Train
@@ -70,8 +67,7 @@ python test_c3d.py -c PointAttN.yaml
 ## 4. Acknowledgement
 
 1. We include the following PyTorch 3rd-party libraries:  
-   [1] [ChamferDistancePytorch](https://github.com/ThibaultGROUEIX/ChamferDistancePytorch)  
-   [2] [mm3d_pn2](https://github.com/Colin97/MSN-Point-Cloud-Completion)
+   [1] [ChamferDistancePytorch](https://github.com/ThibaultGROUEIX/ChamferDistancePytorch)
 
 2. Some of the code of this project is borrowed from [VRC-Net](https://github.com/paul007pl/MVP_Benchmark)  
 
