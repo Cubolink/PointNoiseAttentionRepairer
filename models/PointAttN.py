@@ -10,10 +10,6 @@ from utils.model_utils import *
 from pytorch3d.ops import sample_farthest_points
 
 
-def gather_points(t, indices):
-    return torch.gather(t, 2, indices.unsqueeze(1).expand(-1, t.size(1), -1))
-
-
 class cross_transformer(nn.Module):
 
     def __init__(self, d_model=256, d_model_out=256, nhead=4, dim_feedforward=1024, dropout=0.0):
