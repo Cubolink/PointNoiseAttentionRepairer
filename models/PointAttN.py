@@ -143,9 +143,9 @@ class PCT_refine(nn.Module):
         return x, y3
 
 
-class PCT_encoder(nn.Module):
+class FeatureExtractor(nn.Module):
     def __init__(self, channel=64):
-        super(PCT_encoder, self).__init__()
+        super(FeatureExtractor, self).__init__()
         self.channel = channel
         self.conv1 = nn.Conv1d(3, 64, kernel_size=1)
         self.conv2 = nn.Conv1d(64, channel, kernel_size=1)
@@ -158,16 +158,6 @@ class PCT_encoder(nn.Module):
         self.sfa3 = SFA(channel*8, channel*8)
 
         self.relu = nn.GELU()
-
-        self.sfa0_d = SFA(channel*8, channel*8)
-        self.sfa1_d = SFA(channel*8, channel*8)
-        self.sfa2_d = SFA(channel*8, channel*8)
-
-        self.conv_out = nn.Conv1d(64, 3, kernel_size=1)
-        self.conv_out1 = nn.Conv1d(channel*4, 64, kernel_size=1)
-        self.ps = nn.ConvTranspose1d(channel*8, channel, 128, bias=True)
-        self.ps_refuse = nn.Conv1d(channel, channel*8, kernel_size=1)
-        self.ps_adj = nn.Conv1d(channel*8, channel*8, kernel_size=1)
 
 
     def forward(self, points):
@@ -192,6 +182,29 @@ class PCT_encoder(nn.Module):
         # maxpooling
         x_g = F.adaptive_max_pool1d(x3, 1).view(batch_size, -1).unsqueeze(-1)
 
+        return x_g
+
+
+class SeedGenerator(nn.Module):
+    def __init__(self, channel=64):
+        super(SeedGenerator, self).__init__()
+        self.channel = channel
+
+        self.sfa0_d = SFA(channel * 8, channel * 8)
+        self.sfa1_d = SFA(channel * 8, channel * 8)
+        self.sfa2_d = SFA(channel * 8, channel * 8)
+
+        self.conv_out = nn.Conv1d(64, 3, kernel_size=1)
+        self.conv_out1 = nn.Conv1d(channel * 4, 64, kernel_size=1)
+        self.ps = nn.ConvTranspose1d(channel * 8, channel, 128, bias=True)
+        self.ps_refuse = nn.Conv1d(channel, channel * 8, kernel_size=1)
+        self.ps_adj = nn.Conv1d(channel * 8, channel * 8, kernel_size=1)
+
+        self.relu = nn.GELU()
+
+    def forward(self, x_g, points):
+        batch_size, _, N = points.size()
+
         # # Seed Generator
         x = self.relu(self.ps_adj(x_g))
         x = self.relu(self.ps(x))
@@ -199,11 +212,15 @@ class PCT_encoder(nn.Module):
         # SFA
         x0_d = (self.sfa0_d(x))
         x1_d = (self.sfa1_d(x0_d))
-        x2_d = (self.sfa2_d(x1_d)).reshape(batch_size, self.channel*4, N//8)
+        x2_d = (self.sfa2_d(x1_d)).reshape(batch_size, self.channel * 4, N // 8)
 
-        fine = self.conv_out(self.relu(self.conv_out1(x2_d)))
+        coarse = self.conv_out(self.relu(self.conv_out1(x2_d)))
 
-        return x_g, fine
+        new_x = torch.cat([points, coarse], dim=2)
+        new_x, _ = sample_farthest_points(new_x.transpose(1, 2).contiguous(), K=512)
+        new_x = new_x.transpose(1, 2)
+
+        return new_x, coarse
 
 
 class Model(nn.Module):
@@ -221,20 +238,17 @@ class Model(nn.Module):
         else:
             raise ValueError('dataset does not exist')
 
-        self.encoder = PCT_encoder()
+        self.feature_extractor = FeatureExtractor()
+        self.seed_generator = SeedGenerator()
 
         self.refine = PCT_refine(ratio=step1)
         self.refine1 = PCT_refine(ratio=step2)
 
-
     def forward(self, x, gt=None, is_training=True):
-        feat_g, coarse = self.encoder(x)
+        feat_g = self.feature_extractor(x)
+        seeds, coarse = self.seed_generator(feat_g, x)
 
-        new_x = torch.cat([x,coarse],dim=2)
-        new_x, _ = sample_farthest_points(new_x.transpose(1, 2).contiguous(), K=512)
-        new_x = new_x.transpose(1, 2)
-
-        fine, feat_fine = self.refine(None, new_x, feat_g)
+        fine, feat_fine = self.refine(None, seeds, feat_g)
         fine1, feat_fine1 = self.refine1(feat_fine, fine, feat_g)
 
         coarse = coarse.transpose(1, 2).contiguous()
