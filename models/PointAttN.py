@@ -97,16 +97,16 @@ class SFA(nn.Module):
 
 
 class PointGenerator(nn.Module):
-    def __init__(self, channel=128,ratio=1):
+    def __init__(self, channel=128, ratio=1):
         super(PointGenerator, self).__init__()
         self.ratio = ratio
         self.conv_1 = nn.Conv1d(256, channel, kernel_size=1)
         self.conv_11 = nn.Conv1d(512, 256, kernel_size=1)
         self.conv_x = nn.Conv1d(3, 64, kernel_size=1)
 
-        self.sfa1 = SFA(channel*2,512)
-        self.sfa2 = SFA(512,512)
-        self.sfa3 = SFA(512,channel*ratio)
+        self.sfa1 = SFA(channel*2, 512)
+        self.sfa2 = SFA(512, 512)
+        self.sfa3 = SFA(512, channel*ratio)
 
         self.relu = nn.GELU()
 
@@ -126,18 +126,18 @@ class PointGenerator(nn.Module):
 
         y = self.conv_x1(self.relu(self.conv_x(coarse)))  # B, C, N
         feat_g = self.conv_1(self.relu(self.conv_11(feat_g)))  # B, C, N
-        y0 = torch.cat([y,feat_g.repeat(1,1,y.shape[-1])],dim=1)
+        y0 = torch.cat([y, feat_g.repeat(1, 1, y.shape[-1])], dim=1)
 
         y1 = self.sfa1(y0)
         y2 = self.sfa2(y1)
         y3 = self.sfa3(y2)
-        y3 = self.conv_ps(y3).reshape(batch_size,-1,N*self.ratio)
+        y3 = self.conv_ps(y3).reshape(batch_size, -1, N*self.ratio)
 
-        y_up = y.repeat(1,1,self.ratio)
-        y_cat = torch.cat([y3,y_up],dim=1)
+        y_up = y.repeat(1, 1, self.ratio)
+        y_cat = torch.cat([y3, y_up], dim=1)
         y4 = self.conv_delta(y_cat)
 
-        x = self.conv_out(self.relu(self.conv_out1(y4))) + coarse.repeat(1,1,self.ratio)
+        x = self.conv_out(self.relu(self.conv_out1(y4))) + coarse.repeat(1, 1, self.ratio)
 
         return x, y3
 
@@ -157,7 +157,6 @@ class FeatureExtractor(nn.Module):
         self.sfa3 = SFA(channel*8, channel*8)
 
         self.relu = nn.GELU()
-
 
     def forward(self, points):
         batch_size, _, N = points.size()
@@ -270,5 +269,8 @@ class Model(nn.Module):
             cd_p, cd_t = calc_cd(fine1, gt)
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt)
 
-            return {'out1': coarse, 'out2': fine1, 'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse, 'cd_p': cd_p, 'cd_t': cd_t}
-
+            return {
+                'out1': coarse, 'out2': fine1,
+                'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
+                'cd_p': cd_p, 'cd_t': cd_t
+            }
