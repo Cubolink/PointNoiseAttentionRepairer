@@ -50,17 +50,50 @@ class cross_transformer(nn.Module):
                                      key=src2,
                                      value=src2)[0]
 
-
         src1 = src1 + self.dropout12(src12)
         src1 = self.norm12(src1)
 
         src12 = self.linear12(self.dropout1(self.activation1(self.linear11(src1))))
         src1 = src1 + self.dropout13(src12)
 
-
         src1 = src1.permute(1, 2, 0)
 
         return src1
+
+
+class GDP(nn.Module):
+    def __init__(self, d_model=256, d_model_out=256, nhead=4, dim_feedforward=1024, dropout=0.0):
+        super().__init__()
+        self.cross_transformer = cross_transformer(d_model, d_model_out, nhead, dim_feedforward, dropout)
+
+    def forward(self, x0, points, k_samples):
+        """
+        Args:
+            x0: encoded points
+            points:
+            k_samples: K farthest point samples
+
+        Returns:
+
+        """
+        points, idx_0 = sample_farthest_points(points.transpose(1, 2).contiguous(), K=k_samples)
+        x_g0 = gather_points(x0, idx_0)
+        points = points.transpose(1, 2)
+
+        x1 = self.cross_transformer(x_g0, x0).contiguous()
+        x1 = torch.cat([x_g0, x1], dim=1)
+
+        return x1, points
+
+
+class SFA(nn.Module):
+    def __init__(self, d_model=256, d_model_out=256, nhead=4, dim_feedforward=1024, dropout=0.0):
+        super().__init__()
+        self.cross_transformer = cross_transformer(d_model, d_model_out, nhead, dim_feedforward, dropout)
+
+    def forward(self, x):
+        x1 = self.cross_transformer(x, x).contiguous()
+        return x1
 
 
 class PCT_refine(nn.Module):
@@ -71,9 +104,9 @@ class PCT_refine(nn.Module):
         self.conv_11 = nn.Conv1d(512, 256, kernel_size=1)
         self.conv_x = nn.Conv1d(3, 64, kernel_size=1)
 
-        self.sa1 = cross_transformer(channel*2,512)
-        self.sa2 = cross_transformer(512,512)
-        self.sa3 = cross_transformer(512,channel*ratio)
+        self.sfa1 = SFA(channel*2,512)
+        self.sfa2 = SFA(512,512)
+        self.sfa3 = SFA(512,channel*ratio)
 
         self.relu = nn.GELU()
 
@@ -96,9 +129,9 @@ class PCT_refine(nn.Module):
         feat_g = self.conv_1(self.relu(self.conv_11(feat_g)))  # B, C, N
         y0 = torch.cat([y,feat_g.repeat(1,1,y.shape[-1])],dim=1)
 
-        y1 = self.sa1(y0, y0)
-        y2 = self.sa2(y1, y1)
-        y3 = self.sa3(y2, y2)
+        y1 = self.sfa1(y0)
+        y2 = self.sfa2(y1)
+        y3 = self.sfa3(y2)
         y3 = self.conv_ps(y3).reshape(batch_size,-1,N*self.ratio)
 
         y_up = y.repeat(1,1,self.ratio)
@@ -109,6 +142,7 @@ class PCT_refine(nn.Module):
 
         return x, y3
 
+
 class PCT_encoder(nn.Module):
     def __init__(self, channel=64):
         super(PCT_encoder, self).__init__()
@@ -116,19 +150,18 @@ class PCT_encoder(nn.Module):
         self.conv1 = nn.Conv1d(3, 64, kernel_size=1)
         self.conv2 = nn.Conv1d(64, channel, kernel_size=1)
 
-        self.sa1 = cross_transformer(channel,channel)
-        self.sa1_1 = cross_transformer(channel*2,channel*2)
-        self.sa2 = cross_transformer((channel)*2,channel*2)
-        self.sa2_1 = cross_transformer((channel)*4,channel*4)
-        self.sa3 = cross_transformer((channel)*4,channel*4)
-        self.sa3_1 = cross_transformer((channel)*8,channel*8)
+        self.gdp1 = GDP(channel, channel)
+        self.sfa1 = SFA(channel*2, channel*2)
+        self.gdp2 = GDP(channel*2, channel*2)
+        self.sfa2 = SFA(channel*4, channel*4)
+        self.gdp3 = GDP(channel*4, channel*4)
+        self.sfa3 = SFA(channel*8, channel*8)
 
         self.relu = nn.GELU()
 
-
-        self.sa0_d = cross_transformer(channel*8,channel*8)
-        self.sa1_d = cross_transformer(channel*8,channel*8)
-        self.sa2_d = cross_transformer(channel*8,channel*8)
+        self.sfa0_d = SFA(channel*8, channel*8)
+        self.sfa1_d = SFA(channel*8, channel*8)
+        self.sfa2_d = SFA(channel*8, channel*8)
 
         self.conv_out = nn.Conv1d(64, 3, kernel_size=1)
         self.conv_out1 = nn.Conv1d(channel*4, 64, kernel_size=1)
@@ -143,44 +176,35 @@ class PCT_encoder(nn.Module):
         x = self.relu(self.conv1(points))  # B, D, N
         x0 = self.conv2(x)
 
+        # # Feature Extractor
         # GDP
-        points, idx_0 = sample_farthest_points(points.transpose(1, 2).contiguous(), K=N//4)
-        x_g0 = gather_points(x0, idx_0)
-        points = points.transpose(1, 2)
-        x1 = self.sa1(x_g0, x0).contiguous()
-        x1 = torch.cat([x_g0, x1], dim=1)
+        x1, points = self.gdp1(x0, points, N//4)
         # SFA
-        x1 = self.sa1_1(x1,x1).contiguous()
+        x1 = self.sfa1(x1).contiguous()
         # GDP
-        points, idx_1 = sample_farthest_points(points.transpose(1, 2).contiguous(), K=N//8)
-        x_g1 = gather_points(x1, idx_1)
-        points = points.transpose(1, 2)
-        x2 = self.sa2(x_g1, x1).contiguous()  # C*2, N
-        x2 = torch.cat([x_g1, x2], dim=1)
+        x2, points = self.gdp2(x1, points, N//8)
         # SFA
-        x2 = self.sa2_1(x2, x2).contiguous()
+        x2 = self.sfa2(x2)
         # GDP
-        _, idx_2 = sample_farthest_points(points.transpose(1, 2).contiguous(), K=N//16)
-        x_g2 = gather_points(x2, idx_2)
-        # points = points.transpose(1, 2)
-        x3 = self.sa3(x_g2, x2).contiguous()  # C*4, N/4
-        x3 = torch.cat([x_g2, x3], dim=1)
+        x3, _ = self.gdp3(x2, points, N//16)
         # SFA
-        x3 = self.sa3_1(x3,x3).contiguous()
-        # seed generator
+        x3 = self.sfa3(x3)
         # maxpooling
         x_g = F.adaptive_max_pool1d(x3, 1).view(batch_size, -1).unsqueeze(-1)
+
+        # # Seed Generator
         x = self.relu(self.ps_adj(x_g))
         x = self.relu(self.ps(x))
         x = self.relu(self.ps_refuse(x))
         # SFA
-        x0_d = (self.sa0_d(x, x))
-        x1_d = (self.sa1_d(x0_d, x0_d))
-        x2_d = (self.sa2_d(x1_d, x1_d)).reshape(batch_size,self.channel*4,N//8)
+        x0_d = (self.sfa0_d(x))
+        x1_d = (self.sfa1_d(x0_d))
+        x2_d = (self.sfa2_d(x1_d)).reshape(batch_size, self.channel*4, N//8)
 
         fine = self.conv_out(self.relu(self.conv_out1(x2_d)))
 
         return x_g, fine
+
 
 class Model(nn.Module):
     def __init__(self, args):
