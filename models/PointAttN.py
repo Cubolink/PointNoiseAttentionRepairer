@@ -96,9 +96,9 @@ class SFA(nn.Module):
         return x1
 
 
-class PCT_refine(nn.Module):
+class PointGenerator(nn.Module):
     def __init__(self, channel=128,ratio=1):
-        super(PCT_refine, self).__init__()
+        super(PointGenerator, self).__init__()
         self.ratio = ratio
         self.conv_1 = nn.Conv1d(256, channel, kernel_size=1)
         self.conv_11 = nn.Conv1d(512, 256, kernel_size=1)
@@ -121,8 +121,7 @@ class PCT_refine(nn.Module):
 
         self.conv_out1 = nn.Conv1d(channel, 64, kernel_size=1)
 
-
-    def forward(self, x, coarse,feat_g):
+    def forward(self, coarse, feat_g):
         batch_size, _, N = coarse.size()
 
         y = self.conv_x1(self.relu(self.conv_x(coarse)))  # B, C, N
@@ -241,15 +240,15 @@ class Model(nn.Module):
         self.feature_extractor = FeatureExtractor()
         self.seed_generator = SeedGenerator()
 
-        self.refine = PCT_refine(ratio=step1)
-        self.refine1 = PCT_refine(ratio=step2)
+        self.refine = PointGenerator(ratio=step1)
+        self.refine1 = PointGenerator(ratio=step2)
 
     def forward(self, x, gt=None, is_training=True):
         feat_g = self.feature_extractor(x)
         seeds, coarse = self.seed_generator(feat_g, x)
 
-        fine, feat_fine = self.refine(None, seeds, feat_g)
-        fine1, feat_fine1 = self.refine1(feat_fine, fine, feat_g)
+        fine, _ = self.refine(seeds, feat_g)
+        fine1, _ = self.refine1(fine, feat_g)
 
         coarse = coarse.transpose(1, 2).contiguous()
         fine = fine.transpose(1, 2).contiguous()
