@@ -24,3 +24,7 @@ def calc_cd(output, gt, calc_f1=False):
         return cd_p, cd_t, f1
     else:
         return cd_p, cd_t
+
+
+def gather_points(tensor, indices):
+    return torch.gather(tensor, 2, indices.unsqueeze(1).expand(-1, tensor.size(1), -1))
