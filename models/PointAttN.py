@@ -96,17 +96,17 @@ class SFA(nn.Module):
         return x1
 
 
-class PCT_refine(nn.Module):
-    def __init__(self, channel=128,ratio=1):
-        super(PCT_refine, self).__init__()
+class PointGenerator(nn.Module):
+    def __init__(self, channel=128, ratio=1):
+        super(PointGenerator, self).__init__()
         self.ratio = ratio
         self.conv_1 = nn.Conv1d(256, channel, kernel_size=1)
         self.conv_11 = nn.Conv1d(512, 256, kernel_size=1)
         self.conv_x = nn.Conv1d(3, 64, kernel_size=1)
 
-        self.sfa1 = SFA(channel*2,512)
-        self.sfa2 = SFA(512,512)
-        self.sfa3 = SFA(512,channel*ratio)
+        self.sfa1 = SFA(channel*2, 512)
+        self.sfa2 = SFA(512, 512)
+        self.sfa3 = SFA(512, channel*ratio)
 
         self.relu = nn.GELU()
 
@@ -121,31 +121,30 @@ class PCT_refine(nn.Module):
 
         self.conv_out1 = nn.Conv1d(channel, 64, kernel_size=1)
 
-
-    def forward(self, x, coarse,feat_g):
+    def forward(self, coarse, feat_g):
         batch_size, _, N = coarse.size()
 
         y = self.conv_x1(self.relu(self.conv_x(coarse)))  # B, C, N
         feat_g = self.conv_1(self.relu(self.conv_11(feat_g)))  # B, C, N
-        y0 = torch.cat([y,feat_g.repeat(1,1,y.shape[-1])],dim=1)
+        y0 = torch.cat([y, feat_g.repeat(1, 1, y.shape[-1])], dim=1)
 
         y1 = self.sfa1(y0)
         y2 = self.sfa2(y1)
         y3 = self.sfa3(y2)
-        y3 = self.conv_ps(y3).reshape(batch_size,-1,N*self.ratio)
+        y3 = self.conv_ps(y3).reshape(batch_size, -1, N*self.ratio)
 
-        y_up = y.repeat(1,1,self.ratio)
-        y_cat = torch.cat([y3,y_up],dim=1)
+        y_up = y.repeat(1, 1, self.ratio)
+        y_cat = torch.cat([y3, y_up], dim=1)
         y4 = self.conv_delta(y_cat)
 
-        x = self.conv_out(self.relu(self.conv_out1(y4))) + coarse.repeat(1,1,self.ratio)
+        x = self.conv_out(self.relu(self.conv_out1(y4))) + coarse.repeat(1, 1, self.ratio)
 
         return x, y3
 
 
-class PCT_encoder(nn.Module):
+class FeatureExtractor(nn.Module):
     def __init__(self, channel=64):
-        super(PCT_encoder, self).__init__()
+        super(FeatureExtractor, self).__init__()
         self.channel = channel
         self.conv1 = nn.Conv1d(3, 64, kernel_size=1)
         self.conv2 = nn.Conv1d(64, channel, kernel_size=1)
@@ -158,17 +157,6 @@ class PCT_encoder(nn.Module):
         self.sfa3 = SFA(channel*8, channel*8)
 
         self.relu = nn.GELU()
-
-        self.sfa0_d = SFA(channel*8, channel*8)
-        self.sfa1_d = SFA(channel*8, channel*8)
-        self.sfa2_d = SFA(channel*8, channel*8)
-
-        self.conv_out = nn.Conv1d(64, 3, kernel_size=1)
-        self.conv_out1 = nn.Conv1d(channel*4, 64, kernel_size=1)
-        self.ps = nn.ConvTranspose1d(channel*8, channel, 128, bias=True)
-        self.ps_refuse = nn.Conv1d(channel, channel*8, kernel_size=1)
-        self.ps_adj = nn.Conv1d(channel*8, channel*8, kernel_size=1)
-
 
     def forward(self, points):
         batch_size, _, N = points.size()
@@ -192,6 +180,29 @@ class PCT_encoder(nn.Module):
         # maxpooling
         x_g = F.adaptive_max_pool1d(x3, 1).view(batch_size, -1).unsqueeze(-1)
 
+        return x_g
+
+
+class SeedGenerator(nn.Module):
+    def __init__(self, channel=64):
+        super(SeedGenerator, self).__init__()
+        self.channel = channel
+
+        self.sfa0_d = SFA(channel * 8, channel * 8)
+        self.sfa1_d = SFA(channel * 8, channel * 8)
+        self.sfa2_d = SFA(channel * 8, channel * 8)
+
+        self.conv_out = nn.Conv1d(64, 3, kernel_size=1)
+        self.conv_out1 = nn.Conv1d(channel * 4, 64, kernel_size=1)
+        self.ps = nn.ConvTranspose1d(channel * 8, channel, 128, bias=True)
+        self.ps_refuse = nn.Conv1d(channel, channel * 8, kernel_size=1)
+        self.ps_adj = nn.Conv1d(channel * 8, channel * 8, kernel_size=1)
+
+        self.relu = nn.GELU()
+
+    def forward(self, x_g, points):
+        batch_size, _, N = points.size()
+
         # # Seed Generator
         x = self.relu(self.ps_adj(x_g))
         x = self.relu(self.ps(x))
@@ -199,11 +210,15 @@ class PCT_encoder(nn.Module):
         # SFA
         x0_d = (self.sfa0_d(x))
         x1_d = (self.sfa1_d(x0_d))
-        x2_d = (self.sfa2_d(x1_d)).reshape(batch_size, self.channel*4, N//8)
+        x2_d = (self.sfa2_d(x1_d)).reshape(batch_size, self.channel * 4, N // 8)
 
-        fine = self.conv_out(self.relu(self.conv_out1(x2_d)))
+        coarse = self.conv_out(self.relu(self.conv_out1(x2_d)))
 
-        return x_g, fine
+        new_x = torch.cat([points, coarse], dim=2)
+        new_x, _ = sample_farthest_points(new_x.transpose(1, 2).contiguous(), K=512)
+        new_x = new_x.transpose(1, 2)
+
+        return new_x, coarse
 
 
 class Model(nn.Module):
@@ -221,21 +236,18 @@ class Model(nn.Module):
         else:
             raise ValueError('dataset does not exist')
 
-        self.encoder = PCT_encoder()
+        self.feature_extractor = FeatureExtractor()
+        self.seed_generator = SeedGenerator()
 
-        self.refine = PCT_refine(ratio=step1)
-        self.refine1 = PCT_refine(ratio=step2)
-
+        self.refine = PointGenerator(ratio=step1)
+        self.refine1 = PointGenerator(ratio=step2)
 
     def forward(self, x, gt=None, is_training=True):
-        feat_g, coarse = self.encoder(x)
+        feat_g = self.feature_extractor(x)
+        seeds, coarse = self.seed_generator(feat_g, x)
 
-        new_x = torch.cat([x,coarse],dim=2)
-        new_x, _ = sample_farthest_points(new_x.transpose(1, 2).contiguous(), K=512)
-        new_x = new_x.transpose(1, 2)
-
-        fine, feat_fine = self.refine(None, new_x, feat_g)
-        fine1, feat_fine1 = self.refine1(feat_fine, fine, feat_g)
+        fine, _ = self.refine(seeds, feat_g)
+        fine1, _ = self.refine1(fine, feat_g)
 
         coarse = coarse.transpose(1, 2).contiguous()
         fine = fine.transpose(1, 2).contiguous()
@@ -257,5 +269,8 @@ class Model(nn.Module):
             cd_p, cd_t = calc_cd(fine1, gt)
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt)
 
-            return {'out1': coarse, 'out2': fine1, 'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse, 'cd_p': cd_p, 'cd_t': cd_t}
-
+            return {
+                'out1': coarse, 'out2': fine1,
+                'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
+                'cd_p': cd_p, 'cd_t': cd_t
+            }
