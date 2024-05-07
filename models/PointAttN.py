@@ -242,7 +242,7 @@ class Model(nn.Module):
         self.refine = PointGenerator(ratio=step1)
         self.refine1 = PointGenerator(ratio=step2)
 
-    def forward(self, x, gt=None, is_training=True):
+    def forward(self, x, gt=None, restoration_gt=None, is_training=True):
         feat_g = self.feature_extractor(x)
         seeds, coarse = self.seed_generator(feat_g, x)
 
@@ -255,11 +255,11 @@ class Model(nn.Module):
 
         if is_training:
             loss3, _ = calc_cd(fine1, gt)
+
             gt_fine1, _ = sample_farthest_points(gt, K=fine.shape[1])
-
             loss2, _ = calc_cd(fine, gt_fine1)
-            gt_coarse, _ = sample_farthest_points(gt_fine1, K=coarse.shape[1])
 
+            gt_coarse, _ = sample_farthest_points(restoration_gt, K=coarse.shape[1])
             loss1, _ = calc_cd(coarse, gt_coarse)
 
             total_train_loss = loss1.mean() + loss2.mean() + loss3.mean()

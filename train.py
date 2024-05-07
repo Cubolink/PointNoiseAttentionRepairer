@@ -96,14 +96,14 @@ def train():
         for i, data in enumerate(dataloader, 0):
             optimizer.zero_grad()
     
-            _, inputs, gt = data
+            _, inputs, gt, restoration_gt = data
             # mean_feature = None
     
             inputs = inputs.float().cuda()
             gt = gt.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
     
-            out2, loss2, net_loss = net(inputs, gt)
+            out2, loss2, net_loss = net(inputs, gt, restoration_gt)
     
             train_loss_meter.update(net_loss.mean().item())
     
@@ -131,14 +131,14 @@ def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses
 
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
-            label, inputs, gt = data
+            label, inputs, gt, restoration_gt = data
             # mean_feature = None
     
             inputs = inputs.float().cuda()
             gt = gt.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
             # result_dict = net(inputs, gt, is_training=False, mean_feature=mean_feature)
-            result_dict = net(inputs, gt, is_training=False)
+            result_dict = net(inputs, gt, restoration_gt, is_training=False)
             for k, v in val_loss_meters.items():
                 v.update(result_dict[k].mean().item())
     

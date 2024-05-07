@@ -66,6 +66,13 @@ def test():
                         os.makedirs(path)
                     path = os.path.join(path, str(obj[j]) + '.obj')
                     save_obj(result_dict['out2'][j], path)
+                    save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
+                    save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
+                    save_obj(
+                        torch.cat([inputs[j].transpose(0, 1), result_dict['out1'][j]], dim=0),
+                        path.replace('.obj', 'coarse+inputs.obj'))
+
+                    save_obj(gt[j], path.replace('.obj', '_gt.obj'))
 
         category_log = 'Loss per category:\n'
         for i in range(len(dataset_test.label_map)):

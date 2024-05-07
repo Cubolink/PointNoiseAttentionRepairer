@@ -352,7 +352,7 @@ class GeometricBreaksDataset:
             restoration_points = break_symmetry(restoration_points_dict['points'])
             complete_points = break_symmetry(complete_points_dict['points'])
 
-            return category, broken_points, complete_points
+            return category, broken_points, restoration_points, complete_points
 
     def __init__(self, dataset_folder, prefix,
                  categories=None, no_except=True, transform=None, cfg=None):
@@ -436,7 +436,7 @@ class GeometricBreaksDataset:
         model_path = os.path.join(self.dataset_folder, category, model)
 
         try:
-            label, partial, complete = self.field.load(model_path, idx, category)
+            label, partial, restoration, complete = self.field.load(model_path, idx, category)
         except Exception:
             if self.no_except:
                 logger.warn(
@@ -451,8 +451,10 @@ class GeometricBreaksDataset:
         # SubsampleAll
         partial_sample_indices = np.random.randint(partial.shape[0], size=2048)
         complete_sample_indices = np.random.randint(complete.shape[0], size=2048)
+        restoration_sample_indices = np.random.randint(restoration.shape[0], size=2048)
         partial = partial[partial_sample_indices]
         complete = complete[complete_sample_indices]
+        restoration = restoration[restoration_sample_indices]
 
         complete = torch.from_numpy(complete)
         partial = torch.from_numpy(partial)
@@ -460,7 +462,7 @@ class GeometricBreaksDataset:
         if self.prefix == 'test':
             return label, partial, complete, model
         else:
-            return label, partial, complete
+            return label, partial, complete, restoration
 
 
 if __name__ == '__main__':
