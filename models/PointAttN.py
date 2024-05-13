@@ -96,6 +96,71 @@ class SFA(nn.Module):
         return x1
 
 
+class GDP2(nn.Module):  # Maybe Noise Details Perception, NDP
+    def __init__(self, d_model=256, d_model_out=256, nhead=4, dim_feedforward=1024, dropout=0.0):
+        super().__init__()
+        self.cross_transformer = cross_transformer(d_model, d_model_out, nhead, dim_feedforward, dropout)
+
+    def forward(self, x0, y0, noise):
+        """
+        Args:
+            x0: encoded points
+            y0: encoded noise
+            noise:
+
+        Returns:
+
+        """
+
+        x1 = self.cross_transformer(y0, x0).contiguous()
+        x1 = torch.cat([y0, x1], dim=1)
+
+        return x1, noise
+
+
+class PrimalExtractor(nn.Module):  # Beta name.
+    def __init__(self, channel=128):
+        super(PrimalExtractor, self).__init__()
+        self.conv_11 = nn.Conv1d(512, 256, kernel_size=1)
+        self.conv_1 = nn.Conv1d(256, channel, kernel_size=1)
+
+        self.conv_x = nn.Conv1d(3, 64, kernel_size=1)
+        self.conv_x1 = nn.Conv1d(64, channel, kernel_size=1)
+
+        self.conv_z = nn.Conv1d(3, 64, kernel_size=1)
+        self.conv_z1 = nn.Conv1d(64, channel * 2, kernel_size=1)
+
+        # self.sfa0 = SFA(channel * 2, channel * 2)
+        self.gdp2 = GDP2(channel * 2, 256)
+        self.sfa2 = SFA(512, 512)
+        self.sfa3 = SFA(512, channel)
+
+        self.relu = nn.GELU()
+
+        self.channel = channel
+
+        self.conv_out1 = nn.Conv1d(channel, 64, kernel_size=1)
+        self.conv_out = nn.Conv1d(64, 1, kernel_size=1)
+
+        # self.sigmoid = nn.Sigmoid()
+
+    def forward(self, coarse, feat_g, noise):
+        batch_size, _, N = coarse.size()
+
+        y = self.conv_x1(self.relu(self.conv_x(coarse)))  # B, C, N
+        feat_g = self.conv_1(self.relu(self.conv_11(feat_g)))  # B, C, N
+        y0 = torch.cat([y, feat_g.repeat(1, 1, y.shape[-1])], dim=1)
+        z = self.conv_z1(self.relu(self.conv_z(noise)))  # B, C, N
+
+        # y0 = self.sfa0(y0)
+        z1, _ = self.gdp2(y0, z, noise)
+        z2 = self.sfa3(self.sfa2(z1))
+
+        x = self.conv_out(self.relu(self.conv_out1(z2)))
+        # x = self.sigmoid(x)
+        return x
+
+
 class PointGenerator(nn.Module):
     def __init__(self, channel=128, ratio=1):
         super(PointGenerator, self).__init__()
@@ -239,38 +304,43 @@ class Model(nn.Module):
         self.feature_extractor = FeatureExtractor()
         self.seed_generator = SeedGenerator()
 
-        self.refine = PointGenerator(ratio=step1)
-        self.refine1 = PointGenerator(ratio=step2)
+        self.refine = PrimalExtractor()
+        # self.refine = PointGenerator(ratio=step1)
+        # self.refine1 = PointGenerator(ratio=step2)
 
-    def forward(self, x, gt=None, restoration_gt=None, is_training=True):
+    def forward(self, x, noise, restoration_gt=None, noise_logits_gt=None, is_training=True):
         feat_g = self.feature_extractor(x)
         seeds, coarse = self.seed_generator(feat_g, x)
-
-        fine, _ = self.refine(seeds, feat_g)
-        fine1, _ = self.refine1(fine, feat_g)
+        logits = self.refine(seeds, feat_g, noise)
 
         coarse = coarse.transpose(1, 2).contiguous()
-        fine = fine.transpose(1, 2).contiguous()
-        fine1 = fine1.transpose(1, 2).contiguous()
+        logits = torch.squeeze(logits, dim=1)
 
         if is_training:
-            loss3, _ = calc_cd(fine1, gt)
-
-            gt_fine1, _ = sample_farthest_points(gt, K=fine.shape[1])
-            loss2, _ = calc_cd(fine, gt_fine1)
+            loss3 = nn.functional.binary_cross_entropy_with_logits(logits, noise_logits_gt, reduction='none')
+            loss3 = loss3.mean(axis=1)
 
             gt_coarse, _ = sample_farthest_points(restoration_gt, K=coarse.shape[1])
             loss1, _ = calc_cd(coarse, gt_coarse)
 
-            total_train_loss = loss1.mean() + loss2.mean() + loss3.mean()
+            total_train_loss = loss1.mean() + loss3.mean()
 
-            return fine, loss2, total_train_loss
+            return loss3, loss1, total_train_loss
         else:
-            cd_p, cd_t = calc_cd(fine1, gt)
-            cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt)
-
+            bce = nn.functional.binary_cross_entropy_with_logits(logits, noise_logits_gt, reduction='none').mean(axis=1)
+            cd_p_coarse, cd_t_coarse = calc_cd(coarse, restoration_gt)
+            # usar los logits para generar un out, y un out_gt, ya que el gt tiene ruido así que hay que usar el logits_gt para filtrarlo
+            """
             return {
                 'out1': coarse, 'out2': fine1,
                 'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
                 'cd_p': cd_p, 'cd_t': cd_t
+            }
+            """
+
+            return {
+                'out1': coarse,  # predicted missing part
+                'occ': torch.sigmoid(logits),  # predicted occupancy for the loss
+                'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
+                'bce': bce
             }
