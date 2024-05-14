@@ -549,7 +549,7 @@ class GeometricBreaksDataset:
         partial = partial[partial_sample_indices]
         complete, occ = self.transform2(complete[np.random.permutation(complete.shape[0])[:2048]])
         occ = torch.from_numpy(occ)
-        restoration = restoration[np.random.permutation(2048)]
+        restoration = restoration[np.random.permutation(restoration.shape[0])][:2048]
 
         complete = torch.from_numpy(complete)
         partial = torch.from_numpy(partial)
