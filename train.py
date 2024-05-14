@@ -16,7 +16,7 @@ from dataset import C3D_h5, PCN_pcd, GeometricBreaksDataset
 
 def train():
     logging.info(str(args))
-    metrics = ['bce', 'cd_t_coarse', 'cd_p_coarse']
+    metrics = ['cd_p', 'cd_t', 'cd_t_coarse', 'cd_p_coarse']
     best_epoch_losses = {m: (0, 0) if m == 'f1' else (0, math.inf) for m in metrics}
     train_loss_meter = AverageValueMeter()
     val_loss_meters = {m: AverageValueMeter() for m in metrics}

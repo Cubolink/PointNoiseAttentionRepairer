@@ -6,6 +6,7 @@ import torch.utils.data
 import torch.nn.functional as F
 import math
 from utils.model_utils import *
+from sklearn.cluster import KMeans
 
 from pytorch3d.ops import sample_farthest_points
 
@@ -140,7 +141,7 @@ class PrimalExtractor(nn.Module):  # Beta name.
         self.channel = channel
 
         self.conv_out1 = nn.Conv1d(channel, 64, kernel_size=1)
-        self.conv_out = nn.Conv1d(64, 1, kernel_size=1)
+        self.conv_out = nn.Conv1d(64, 3, kernel_size=1)
 
         # self.sigmoid = nn.Sigmoid()
 
@@ -158,7 +159,7 @@ class PrimalExtractor(nn.Module):  # Beta name.
 
         x = self.conv_out(self.relu(self.conv_out1(z2)))
         # x = self.sigmoid(x)
-        return x
+        return x + noise
 
 
 class PointGenerator(nn.Module):
@@ -308,17 +309,17 @@ class Model(nn.Module):
         # self.refine = PointGenerator(ratio=step1)
         # self.refine1 = PointGenerator(ratio=step2)
 
-    def forward(self, x, noise, restoration_gt=None, noise_logits_gt=None, is_training=True):
+    def forward(self, x, noise, restoration_gt=None, gt=None, is_training=True):
         feat_g = self.feature_extractor(x)
         seeds, coarse = self.seed_generator(feat_g, x)
-        logits = self.refine(seeds, feat_g, noise)
+        unnoised = self.refine(seeds, feat_g, noise)
 
         coarse = coarse.transpose(1, 2).contiguous()
-        logits = torch.squeeze(logits, dim=1)
+        unnoised = unnoised.transpose(1, 2).contiguous()
 
         if is_training:
-            loss3 = nn.functional.binary_cross_entropy_with_logits(logits, noise_logits_gt, reduction='none')
-            loss3 = loss3.mean(axis=1)
+            gt_unnoised, _ = sample_farthest_points(gt, K=unnoised.shape[1])
+            loss3, _ = calc_cd(unnoised, gt_unnoised)
 
             gt_coarse, _ = sample_farthest_points(restoration_gt, K=coarse.shape[1])
             loss1, _ = calc_cd(coarse, gt_coarse)
@@ -327,12 +328,13 @@ class Model(nn.Module):
 
             return loss3, loss1, total_train_loss
         else:
-            bce = nn.functional.binary_cross_entropy_with_logits(logits, noise_logits_gt, reduction='none').mean(axis=1)
+            gt_unnoised, _ = sample_farthest_points(gt, K=unnoised.shape[1])
+            cd_p, cd_t = calc_cd(unnoised, gt_unnoised)
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, restoration_gt)
             # usar los logits para generar un out, y un out_gt, ya que el gt tiene ruido así que hay que usar el logits_gt para filtrarlo
-            """
+            
             return {
-                'out1': coarse, 'out2': fine1,
+                'out1': coarse, 'out2': unnoised,
                 'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
                 'cd_p': cd_p, 'cd_t': cd_t
             }
@@ -344,3 +346,4 @@ class Model(nn.Module):
                 'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
                 'bce': bce
             }
+            """

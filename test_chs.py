@@ -35,7 +35,7 @@ def test():
     logging.info("%s's previous weights loaded." % args.model_name)
     net.eval()
 
-    metrics = ['bce', 'cd_t_coarse', 'cd_p_coarse']
+    metrics = ['cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
     test_loss_meters = {m: AverageValueMeter() for m in metrics}
     test_loss_cat = torch.zeros([len(dataset_test.label_map), len(metrics)], dtype=torch.float32).cuda()
     cat_num = torch.ones([len(dataset_test.label_map), 1], dtype=torch.float32).cuda() * 150
@@ -51,7 +51,7 @@ def test():
             noisy_gt = noisy_gt_cpu.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
             noisy_gt = noisy_gt.transpose(2, 1).contiguous()
-            result_dict = net(inputs, noisy_gt, restoration_gt=restoration_gt, noise_logits_gt=noisy_gt_occ, is_training=False)
+            result_dict = net(inputs, noisy_gt, restoration_gt=restoration_gt, gt=noisy_gt_occ, is_training=False)
             for k, v in test_loss_meters.items():
                 v.update(result_dict[k].mean().item())
 
@@ -69,16 +69,11 @@ def test():
                         os.makedirs(path)
                     path = os.path.join(path, str(obj[j]) + '.obj')
                     # find best occupancy split
-                    kmeans = KMeans(n_clusters=2)
-                    kmeans.fit(result_dict['occ'][j].cpu().reshape(-1, 1))
-                    cluster_centers = kmeans.cluster_centers_.squeeze()
+                    # kmeans = KMeans(n_clusters=2)
+                    # kmeans.fit(result_dict['occ'][j].cpu().reshape(-1, 1))
+                    # cluster_centers = kmeans.cluster_centers_.squeeze()
 
-                    save_obj(noisy_gt[j].transpose(0, 1)[
-                                 # kmeans.labels_ == np.argmax(cluster_centers)
-                                 result_dict['occ'][j] > cluster_centers.mean()
-                                 # it would be better to use the center of the argmax cluster, minus a std deviation
-                                 # so we ensure it's the most confident part of the cluster
-                                 ], path)
+                    save_obj(result_dict['out2'][j], path)
                     save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
                     save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
                     save_obj(

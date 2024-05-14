@@ -545,20 +545,23 @@ class GeometricBreaksDataset:
         # TODO: they use permutation, it seems to be a better method
         # SubsampleAll
         partial_sample_indices = np.random.randint(partial.shape[0], size=2048)
-        complete_sample_indices = np.random.randint(complete.shape[0], size=2048)
         partial = partial[partial_sample_indices]
-        complete, occ = self.transform2(complete[np.random.permutation(complete.shape[0])[:2048]])
-        occ = torch.from_numpy(occ)
+        noise = np.random.uniform(-1 / 2, 1 / 2, size=(2048, partial.shape[1]))
+        # noisy_restauration, occ = self.transform2(restoration[np.random.permutation(restoration.shape[0])[:2048]])
+        # occ = torch.from_numpy(occ)
+        occ = None
         restoration = restoration[np.random.permutation(restoration.shape[0])][:2048]
+        complete = complete[np.random.permutation(complete.shape[0])][:2048]
 
-        complete = torch.from_numpy(complete)
+        noise = torch.from_numpy(noise)
         partial = torch.from_numpy(partial)
         restoration = torch.from_numpy(restoration)
+        complete = torch.from_numpy(complete)
 
         if self.prefix == 'test':
-            return label, partial, complete, occ, restoration, model
+            return label, partial, noise, complete, restoration, model
         else:
-            return label, partial, complete, occ, restoration
+            return label, partial, noise, complete, restoration
 
 
 if __name__ == '__main__':
