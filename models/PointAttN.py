@@ -130,7 +130,7 @@ class PrimalExtractor(nn.Module):  # Beta name.
         self.conv_z = nn.Conv1d(3, 64, kernel_size=1)
         self.conv_z1 = nn.Conv1d(64, channel * 2, kernel_size=1)
 
-        # self.sfa0 = SFA(channel * 2, channel * 2)
+        self.sfa0 = SFA(channel * 2, channel * 2)
         self.gdp2 = GDP2(channel * 2, 256)
         self.sfa2 = SFA(512, 512)
         self.sfa3 = SFA(512, channel)
@@ -152,7 +152,7 @@ class PrimalExtractor(nn.Module):  # Beta name.
         y0 = torch.cat([y, feat_g.repeat(1, 1, y.shape[-1])], dim=1)
         z = self.conv_z1(self.relu(self.conv_z(noise)))  # B, C, N
 
-        # y0 = self.sfa0(y0)
+        y0 = self.sfa0(y0)
         z1, _ = self.gdp2(y0, z, noise)
         z2 = self.sfa3(self.sfa2(z1))
 
