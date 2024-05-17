@@ -45,13 +45,13 @@ def test():
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
 
-            label, inputs_cpu, noisy_gt_cpu, noisy_gt_occ, restoration_gt, obj = data
+            label, inputs_cpu, noise_cpu, complete_gt_cpu, restoration_gt_cpu, obj = data
 
             inputs = inputs_cpu.float().cuda()
-            noisy_gt = noisy_gt_cpu.float().cuda()
+            noise = noise_cpu.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
-            noisy_gt = noisy_gt.transpose(2, 1).contiguous()
-            result_dict = net(inputs, noisy_gt, restoration_gt=restoration_gt, gt=noisy_gt_occ, is_training=False)
+            noise = noise.transpose(2, 1).contiguous()
+            result_dict = net(inputs, noise, gt_coarse=restoration_gt_cpu, gt=complete_gt_cpu, is_training=False)
             for k, v in test_loss_meters.items():
                 v.update(result_dict[k].mean().item())
 
@@ -68,10 +68,6 @@ def test():
                     if not os.path.isdir(path):
                         os.makedirs(path)
                     path = os.path.join(path, str(obj[j]) + '.obj')
-                    # find best occupancy split
-                    # kmeans = KMeans(n_clusters=2)
-                    # kmeans.fit(result_dict['occ'][j].cpu().reshape(-1, 1))
-                    # cluster_centers = kmeans.cluster_centers_.squeeze()
 
                     save_obj(result_dict['out2'][j], path)
                     save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))

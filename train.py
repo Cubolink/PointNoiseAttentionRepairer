@@ -96,17 +96,17 @@ def train():
         for i, data in enumerate(dataloader, 0):
             optimizer.zero_grad()
     
-            _, inputs, noisy_gt, noisy_gt_occupancy, restoration_gt = data
+            _, inputs, noise, complete_gt, restoration_gt = data
             # mean_feature = None
     
             inputs = inputs.float().cuda()
-            noisy_gt = noisy_gt.float().cuda()
-            noisy_gt_occupancy = noisy_gt_occupancy.float().cuda()
+            noise = noise.float().cuda()
+            complete_gt = complete_gt.float().cuda()
 
             inputs = inputs.transpose(2, 1).contiguous()
-            noisy_gt = noisy_gt.transpose(2, 1).contiguous()
+            noise = noise.transpose(2, 1).contiguous()
     
-            out2, loss2, net_loss = net(inputs, noisy_gt, restoration_gt, noisy_gt_occupancy)
+            loss1, loss2, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=complete_gt)
     
             train_loss_meter.update(net_loss.mean().item())
     
@@ -134,16 +134,16 @@ def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses
 
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
-            label, inputs, noisy_gt, noisy_gt_occ, restoration_gt = data
+            label, inputs, noise, complete_gt, restoration_gt = data
             # mean_feature = None
     
             inputs = inputs.float().cuda()
-            noisy_gt = noisy_gt.float().cuda()
-            noisy_gt_occ = noisy_gt_occ.float().cuda()
+            noise = noise.float().cuda()
+            complete_gt = complete_gt.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
-            noisy_gt = noisy_gt.transpose(2, 1).contiguous()
-            # result_dict = net(inputs, gt, is_training=False, mean_feature=mean_feature)
-            result_dict = net(inputs, noisy_gt, restoration_gt, noisy_gt_occ, is_training=False)
+            noise = noise.transpose(2, 1).contiguous()
+
+            result_dict = net(inputs, noise, gt_coarse=restoration_gt, gt=complete_gt, is_training=False)
             for k, v in val_loss_meters.items():
                 v.update(result_dict[k].mean().item())
     
