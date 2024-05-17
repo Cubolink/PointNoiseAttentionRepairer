@@ -142,11 +142,7 @@ class PrimalExtractor(nn.Module):  # Beta name.
         self.conv_out1 = nn.Conv1d(channel, 64, kernel_size=1)
         self.conv_out = nn.Conv1d(64, 1, kernel_size=1)
 
-        # self.sigmoid = nn.Sigmoid()
-
     def forward(self, coarse, feat_g, noise):
-        batch_size, _, N = coarse.size()
-
         y = self.conv_x1(self.relu(self.conv_x(coarse)))  # B, C, N
         feat_g = self.conv_1(self.relu(self.conv_11(feat_g)))  # B, C, N
         y0 = torch.cat([y, feat_g.repeat(1, 1, y.shape[-1])], dim=1)
@@ -157,7 +153,6 @@ class PrimalExtractor(nn.Module):  # Beta name.
         z2 = self.sfa3(self.sfa2(z1))
 
         x = self.conv_out(self.relu(self.conv_out1(z2)))
-        # x = self.sigmoid(x)
         return x
 
 
@@ -308,7 +303,7 @@ class Model(nn.Module):
         # self.refine = PointGenerator(ratio=step1)
         # self.refine1 = PointGenerator(ratio=step2)
 
-    def forward(self, x, noise, restoration_gt=None, noise_logits_gt=None, is_training=True):
+    def forward(self, x, noise, gt_coarse=None, gt=None, is_training=True):
         feat_g = self.feature_extractor(x)
         seeds, coarse = self.seed_generator(feat_g, x)
         logits = self.refine(seeds, feat_g, noise)
@@ -317,30 +312,22 @@ class Model(nn.Module):
         logits = torch.squeeze(logits, dim=1)
 
         if is_training:
-            loss3 = nn.functional.binary_cross_entropy_with_logits(logits, noise_logits_gt, reduction='none')
+            loss3 = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none')
             loss3 = loss3.mean(axis=1)
 
-            gt_coarse, _ = sample_farthest_points(restoration_gt, K=coarse.shape[1])
+            gt_coarse, _ = sample_farthest_points(gt_coarse, K=coarse.shape[1])
             loss1, _ = calc_cd(coarse, gt_coarse)
 
             total_train_loss = loss1.mean() + loss3.mean()
 
             return loss3, loss1, total_train_loss
         else:
-            bce = nn.functional.binary_cross_entropy_with_logits(logits, noise_logits_gt, reduction='none').mean(axis=1)
-            cd_p_coarse, cd_t_coarse = calc_cd(coarse, restoration_gt)
-            # usar los logits para generar un out, y un out_gt, ya que el gt tiene ruido así que hay que usar el logits_gt para filtrarlo
-            """
-            return {
-                'out1': coarse, 'out2': fine1,
-                'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
-                'cd_p': cd_p, 'cd_t': cd_t
-            }
-            """
+            bce = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none').mean(axis=1)
+            cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt_coarse)
 
             return {
                 'out1': coarse,  # predicted missing part
-                'occ': torch.sigmoid(logits),  # predicted occupancy for the loss
+                'occ': torch.sigmoid(logits),  # predicted occupancy probability
                 'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
                 'bce': bce
             }

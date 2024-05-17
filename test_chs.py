@@ -45,13 +45,13 @@ def test():
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
 
-            label, inputs_cpu, noisy_gt_cpu, noisy_gt_occ, restoration_gt, obj = data
+            label, inputs_cpu, noise_cpu, occ_gt_cpu, restoration_gt_cpu, obj = data
 
             inputs = inputs_cpu.float().cuda()
-            noisy_gt = noisy_gt_cpu.float().cuda()
+            noise = noise_cpu.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
-            noisy_gt = noisy_gt.transpose(2, 1).contiguous()
-            result_dict = net(inputs, noisy_gt, restoration_gt=restoration_gt, noise_logits_gt=noisy_gt_occ, is_training=False)
+            noise = noise.transpose(2, 1).contiguous()
+            result_dict = net(inputs, noise, gt_coarse=restoration_gt_cpu, gt=occ_gt_cpu, is_training=False)
             for k, v in test_loss_meters.items():
                 v.update(result_dict[k].mean().item())
 
@@ -73,7 +73,7 @@ def test():
                     kmeans.fit(result_dict['occ'][j].cpu().reshape(-1, 1))
                     cluster_centers = kmeans.cluster_centers_.squeeze()
 
-                    save_obj(noisy_gt[j].transpose(0, 1)[
+                    save_obj(noise[j].transpose(0, 1)[
                                  # kmeans.labels_ == np.argmax(cluster_centers)
                                  result_dict['occ'][j] > cluster_centers.mean()
                                  # it would be better to use the center of the argmax cluster, minus a std deviation
