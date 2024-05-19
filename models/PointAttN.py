@@ -142,6 +142,9 @@ class PrimalExtractor(nn.Module):  # Beta name.
         self.conv_out1 = nn.Conv1d(channel, 64, kernel_size=1)
         self.conv_out = nn.Conv1d(64, 1, kernel_size=1)
 
+        self.sigmoid = nn.Sigmoid()
+        self.threshold_selector = nn.Parameter(torch.tensor(0.5))
+
     def forward(self, coarse, feat_g, noise):
         y = self.conv_x1(self.relu(self.conv_x(coarse)))  # B, C, N
         feat_g = self.conv_1(self.relu(self.conv_11(feat_g)))  # B, C, N
@@ -153,7 +156,10 @@ class PrimalExtractor(nn.Module):  # Beta name.
         z2 = self.sfa3(self.sfa2(z1))
 
         x = self.conv_out(self.relu(self.conv_out1(z2)))
-        return x
+
+        occ = self.sigmoid(x)
+        extracted_mask = (occ >= self.threshold_selector)
+        return x, extracted_mask
 
 
 class PointGenerator(nn.Module):
@@ -306,28 +312,50 @@ class Model(nn.Module):
     def forward(self, x, noise, gt_coarse=None, gt=None, is_training=True):
         feat_g = self.feature_extractor(x)
         seeds, coarse = self.seed_generator(feat_g, x)
-        logits = self.refine(seeds, feat_g, noise)
+        logits, occ_mask = self.refine(seeds, feat_g, noise)
 
         coarse = coarse.transpose(1, 2).contiguous()
+        noise = noise.transpose(1, 2).contiguous()
         logits = torch.squeeze(logits, dim=1)
+
+        occ_mask = occ_mask.squeeze(1)
+        filtered_list = []
+        filtered_list_gt = []
+        for b in range(len(noise)):
+            filtered_list.append(noise[b, occ_mask[b], :])
+            filtered_list_gt.append(noise[b, gt[b].bool(), :])
+
+        loss2 = []
+        for f, f_gt in zip(filtered_list, filtered_list_gt):
+            if f.shape[0] == 0:
+                cd = torch.tensor(float("Inf")).to('cuda'), torch.tensor(float("Inf")).to('cuda')
+            else:
+                cd = calc_cd(f.unsqueeze(0), f_gt.unsqueeze(0))
+            loss2.append(cd)
+        loss2 = torch.Tensor(loss2)
 
         if is_training:
             loss3 = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none')
             loss3 = loss3.mean(axis=1)
 
+            loss2, _ = loss2.T
+
             gt_coarse, _ = sample_farthest_points(gt_coarse, K=coarse.shape[1])
             loss1, _ = calc_cd(coarse, gt_coarse)
 
-            total_train_loss = loss1.mean() + loss3.mean()
+            total_train_loss = loss1.mean() + loss2.mean() + loss3.mean()
 
-            return loss3, loss1, total_train_loss
+            return loss3, loss2, loss1, total_train_loss
         else:
             bce = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none').mean(axis=1)
+            cd_p, cd_t = loss2.T
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt_coarse)
 
             return {
                 'out1': coarse,  # predicted missing part
+                'out2': filtered_list,  # predicted output
                 'occ': torch.sigmoid(logits),  # predicted occupancy probability
                 'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
+                'cd_t': cd_t, 'cd_p': cd_p,
                 'bce': bce
             }
