@@ -7,9 +7,6 @@ import munch
 import yaml
 from utils.train_utils import *
 from dataset import GeometricBreaksDataset
-import h5py
-from sklearn.cluster import KMeans
-import numpy as np
 
 
 def save_obj(point, path):
@@ -68,19 +65,6 @@ def test():
                     if not os.path.isdir(path):
                         os.makedirs(path)
                     path = os.path.join(path, str(obj[j]) + '.obj')
-                    """
-                    # find best occupancy split
-                    kmeans = KMeans(n_clusters=2)
-                    kmeans.fit(result_dict['occ'][j].cpu().reshape(-1, 1))
-                    cluster_centers = kmeans.cluster_centers_.squeeze()
-
-                    save_obj(noise[j].transpose(0, 1)[
-                                 # kmeans.labels_ == np.argmax(cluster_centers)
-                                 result_dict['occ'][j] > cluster_centers.mean()
-                                 # it would be better to use the center of the argmax cluster, minus a std deviation
-                                 # so we ensure it's the most confident part of the cluster
-                                 ], path)
-                    """
                     save_obj(result_dict['out2'][j], path)
                     save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
                     save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
