@@ -319,11 +319,8 @@ class Model(nn.Module):
         logits = torch.squeeze(logits, dim=1)
 
         occ_mask = occ_mask.squeeze(1)
-        filtered_list = []
-        filtered_list_gt = []
-        for b in range(len(noise)):
-            filtered_list.append(noise[b, occ_mask[b], :])
-            filtered_list_gt.append(noise[b, gt[b].bool(), :])
+        filtered_list = [noise[b, occ_mask[b], :] for b in range(len(noise))]
+        filtered_list_gt = [noise[b, gt[b].bool(), :] for b in range(len(noise))]
 
         loss2 = []
         for f, f_gt in zip(filtered_list, filtered_list_gt):
