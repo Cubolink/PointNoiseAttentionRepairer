@@ -319,23 +319,20 @@ class Model(nn.Module):
         logits = torch.squeeze(logits, dim=1)
 
         occ_mask = occ_mask.squeeze(1)
-        filtered_list = [noise[b, occ_mask[b], :] for b in range(len(noise))]
-        filtered_list_gt = [noise[b, gt[b].bool(), :] for b in range(len(noise))]
+        filtered_list = torch.zeros(noise.shape, device=noise.device)
+        filtered_list_gt = torch.zeros(noise.shape, device=noise.device)
+        for b in range(len(noise)):
+            n = occ_mask[b].sum()
+            n_gt = gt[b].bool().sum()
 
-        loss2 = []
-        for f, f_gt in zip(filtered_list, filtered_list_gt):
-            if f.shape[0] == 0:
-                cd = calc_cd(torch.ones((1,) + f_gt.shape, device=f_gt.device), f_gt.unsqueeze(0))
-            else:
-                cd = calc_cd(f.unsqueeze(0), f_gt.unsqueeze(0))
-            loss2.append(cd)
-        loss2 = torch.Tensor(loss2)
+            filtered_list[b] = nn.functional.pad(noise[b, occ_mask[b], :], (0, 0, 0, 2048 - n), "constant", 42)
+            filtered_list_gt[b] = nn.functional.pad(noise[b, gt[b].bool(), :], (0, 0, 0, 2048 - n_gt), "constant", 42)
 
         if is_training:
             loss3 = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none')
             loss3 = loss3.mean(axis=1)
 
-            loss2, _ = loss2.T
+            loss2, _ = calc_cd(filtered_list, filtered_list_gt)
 
             gt_coarse, _ = sample_farthest_points(gt_coarse, K=coarse.shape[1])
             loss1, _ = calc_cd(coarse, gt_coarse)
@@ -345,7 +342,7 @@ class Model(nn.Module):
             return loss3, loss2, loss1, total_train_loss
         else:
             bce = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none').mean(axis=1)
-            cd_p, cd_t = loss2.T
+            cd_p, cd_t = calc_cd(filtered_list, filtered_list_gt)
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt_coarse)
 
             return {

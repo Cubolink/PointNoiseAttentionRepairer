@@ -65,7 +65,9 @@ def test():
                     if not os.path.isdir(path):
                         os.makedirs(path)
                     path = os.path.join(path, str(obj[j]) + '.obj')
-                    save_obj(result_dict['out2'][j], path)
+
+                    mask = (result_dict['out2'][j] < 1).all(axis=1)
+                    save_obj(result_dict['out2'][j][mask], path)
                     save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
                     save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
                     save_obj(
