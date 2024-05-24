@@ -325,7 +325,7 @@ class Model(nn.Module):
         loss2 = []
         for f, f_gt in zip(filtered_list, filtered_list_gt):
             if f.shape[0] == 0:
-                cd = torch.tensor(float("Inf")).to('cuda'), torch.tensor(float("Inf")).to('cuda')
+                cd = calc_cd(torch.ones((1,) + f_gt.shape, device=f_gt.device), f_gt.unsqueeze(0))
             else:
                 cd = calc_cd(f.unsqueeze(0), f_gt.unsqueeze(0))
             loss2.append(cd)
