@@ -309,6 +309,15 @@ class Model(nn.Module):
         # self.refine = PointGenerator(ratio=step1)
         # self.refine1 = PointGenerator(ratio=step2)
 
+    @staticmethod
+    def _filter_noise(noise, mask):
+        filtered = torch.zeros(noise.shape, device=noise.device)
+        sizes = mask.sum(axis=1)
+        pad_sizes = 2048 - sizes
+        for b in range(len(filtered)):
+            filtered[b] = nn.functional.pad(noise[b, mask[b], :], (0, 0, 0, pad_sizes[b]), "constant", 42)
+        return filtered
+
     def forward(self, x, noise, gt_coarse=None, gt=None, is_training=True):
         feat_g = self.feature_extractor(x)
         seeds, coarse = self.seed_generator(feat_g, x)
@@ -319,14 +328,8 @@ class Model(nn.Module):
         logits = torch.squeeze(logits, dim=1)
 
         occ_mask = occ_mask.squeeze(1)
-        filtered_list = torch.zeros(noise.shape, device=noise.device)
-        filtered_list_gt = torch.zeros(noise.shape, device=noise.device)
-        for b in range(len(noise)):
-            n = occ_mask[b].sum()
-            n_gt = gt[b].bool().sum()
-
-            filtered_list[b] = nn.functional.pad(noise[b, occ_mask[b], :], (0, 0, 0, 2048 - n), "constant", 42)
-            filtered_list_gt[b] = nn.functional.pad(noise[b, gt[b].bool(), :], (0, 0, 0, 2048 - n_gt), "constant", 42)
+        filtered_list = self._filter_noise(noise, occ_mask)
+        filtered_list_gt = self._filter_noise(noise, gt.bool())
 
         if is_training:
             loss3 = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none')
