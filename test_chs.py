@@ -32,7 +32,7 @@ def test():
     logging.info("%s's previous weights loaded." % args.model_name)
     net.eval()
 
-    metrics = ['bce', 'cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
+    metrics = ['cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
     test_loss_meters = {m: AverageValueMeter() for m in metrics}
     test_loss_cat = torch.zeros([len(dataset_test.label_map), len(metrics)], dtype=torch.float32).cuda()
     cat_num = torch.ones([len(dataset_test.label_map), 1], dtype=torch.float32).cuda() * 150
@@ -42,13 +42,13 @@ def test():
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
 
-            label, inputs_cpu, noise_cpu, occ_gt_cpu, restoration_gt_cpu, obj = data
+            label, inputs_cpu, noise_cpu, complete_gt_cpu, restoration_gt_cpu, obj = data
 
             inputs = inputs_cpu.float().cuda()
             noise = noise_cpu.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
             noise = noise.transpose(2, 1).contiguous()
-            result_dict = net(inputs, noise, gt_coarse=restoration_gt_cpu, gt=occ_gt_cpu, is_training=False)
+            result_dict = net(inputs, noise, gt_coarse=restoration_gt_cpu, gt=complete_gt_cpu, is_training=False)
             for k, v in test_loss_meters.items():
                 v.update(result_dict[k].mean().item())
 

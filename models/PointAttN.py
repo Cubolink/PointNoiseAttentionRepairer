@@ -319,6 +319,8 @@ class Model(nn.Module):
         return filtered
 
     def forward(self, x, noise, gt_coarse=None, gt=None, is_training=True):
+        gt_is_occ = (len(gt.shape) == 2)  # should be true on training
+
         feat_g = self.feature_extractor(x)
         seeds, coarse = self.seed_generator(feat_g, x)
         logits, occ_mask = self.refine(seeds, feat_g, noise)
@@ -329,7 +331,7 @@ class Model(nn.Module):
 
         occ_mask = occ_mask.squeeze(1)
         filtered_list = self._filter_noise(noise, occ_mask)
-        filtered_list_gt = self._filter_noise(noise, gt.bool())
+        filtered_list_gt = self._filter_noise(noise, gt.bool()) if gt_is_occ else None
 
         if is_training:
             loss3 = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none')
@@ -344,8 +346,12 @@ class Model(nn.Module):
 
             return loss3, loss2, loss1, total_train_loss
         else:
-            bce = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none').mean(axis=1)
-            cd_p, cd_t = calc_cd(filtered_list, filtered_list_gt)
+            if gt_is_occ:
+                bce = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none').mean(axis=1)
+                cd_p, cd_t = calc_cd(filtered_list, filtered_list_gt)
+            else:
+                bce = None
+                cd_p, cd_t = calc_cd(filtered_list, gt)
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt_coarse)
 
             return {

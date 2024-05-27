@@ -546,16 +546,20 @@ class GeometricBreaksDataset:
         partial = partial[np.random.permutation(partial.shape[0])][:2048]
         restoration = restoration[np.random.permutation(restoration.shape[0])][:2048]
         complete = complete[np.random.permutation(complete.shape[0])[:2048]]
-
-        noise, occ = self.transform2(complete)
-        occ = torch.from_numpy(occ)
+        if self.prefix == 'test':
+            noise = np.random.uniform(-1 / 2, 1 / 2, size=(2048, partial.shape[1]))
+            occ = None
+        else:
+            noise, occ = self.transform2(complete)
+            occ = torch.from_numpy(occ)
 
         partial = torch.from_numpy(partial)
         restoration = torch.from_numpy(restoration)
+        complete = torch.from_numpy(complete)
         noise = torch.from_numpy(noise)
 
         if self.prefix == 'test':
-            return label, partial, noise, occ, restoration, model
+            return label, partial, noise, complete, restoration, model
         else:
             return label, partial, noise, occ, restoration
 
