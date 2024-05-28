@@ -68,6 +68,10 @@ def test():
 
                     mask = (result_dict['out2'][j] < 1).all(axis=1)
                     save_obj(result_dict['out2'][j][mask], path)
+                    save_obj(
+                        torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j][mask]], dim=0),
+                        path.replace('.obj', '+inputs.obj')
+                    )
                     save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
                     save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
                     save_obj(
