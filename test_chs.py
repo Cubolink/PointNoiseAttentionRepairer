@@ -70,6 +70,10 @@ def test():
                     path = os.path.join(path, str(obj[j]) + '.obj')
 
                     save_obj(result_dict['out2'][j], path)
+                    save_obj(
+                        torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j]]),
+                        path.replace('.obj', '+inputs.obj')
+                    )
                     save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
                     save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
                     save_obj(
