@@ -372,82 +372,6 @@ class GeometricBreaksDataset:
 
             return category, broken_points, restoration_points, complete_points
 
-    class NoiseHole(object):
-        """
-        Adds additional 'noise' points to the 'hole' points
-        """
-
-        def __init__(self, careless_noise_integration=True):
-            """
-
-            Args:
-                careless_noise_integration: Whether to care about the noise distribution integrating with the 'hole' piece.
-                                            If set to false, it will try to distribute the hole and noise with about the
-                                            same density, trying to make them indistinguishable.
-            """
-            self.careless = careless_noise_integration
-
-        def __call__(self, points):
-            occ = np.ones(points.shape[0])
-            if not self.careless:
-                """
-                Try to get a really rough estimation of density of the 'hole' points.
-                Compute the needed amount of noise points in the rest of the space, to aim for about the same density
-                Get the proportion of hole and noise, and continue with the sampling as usual.
-                """
-                # Compute bounding box
-                min_coords = points.min(axis=0)
-                max_coords = points.max(axis=0)
-
-                # Compute a density considering a rectangular volume
-                partial_vol = abs((max_coords - min_coords).prod())
-                m = points.shape[0]
-                noise_vol = 1  # considering a bounding box of size 1 for the noise.
-                # noise_vol = 1 - partial_vol  should be used if we can avoid generating noise over the partial shape
-                n = m * noise_vol / partial_vol
-
-                # Now that we have m and n, we have to scalate them down so that m + n == points.shape[0]
-                s = points.shape[0] / (m + n)
-                # I could do round() instead of floor and ceil, but I don't want to trust a (0.49... + 0.49... == 1) case
-                m = int(np.floor(m * s))
-                n = int(np.ceil(n * s))
-            else:
-                # m + n == points.shape[0]
-                m = points.shape[0] // 4
-                n = points.shape[0] - m
-
-            # random sample of the points
-            points, points_idx = resample_pcd(np.array(points), m)
-            occ = np.array(occ)[points_idx]
-            # fill the other part with noise
-            if not self.careless:
-                # roughly estimate distance between points in point cloud
-                dist_sq = cdist(points, points, 'sqeuclidean')
-                np.fill_diagonal(dist_sq, np.inf)
-                in_dist = np.mean(np.min(dist_sq, axis=0))
-                # generate a lot of extra noise, so we can discard some to be careful
-                remaining_n = n
-                noise = np.empty(shape=(0, points.shape[1]))  # start with none
-                while True:  # generate, validate and keep the selected noise
-                    noise_candidates = np.random.uniform(-1 / 2, 1 / 2, size=(min(2 * remaining_n, n), points.shape[1]))
-                    mask = (cdist(noise_candidates, points, 'sqeuclidean') > in_dist).all(axis=1)
-                    noise = np.concatenate((noise, noise_candidates[mask]))
-                    remaining_n -= mask.sum()
-                    if remaining_n <= 0:  # continue until we have enough noise
-                        break
-                noise, _ = resample_pcd(noise, n)  # remove extra noise
-            else:
-                noise = np.random.uniform(-1 / 2, 1 / 2, size=(n, points.shape[1]))
-            noise = noise.astype(np.float32)
-            points_noise_pcd = np.concatenate((points, noise))
-            points_noise_occ = np.concatenate((occ, np.zeros(n)))
-
-            # shuffle
-            shuffled_idx = np.random.permutation(points_noise_pcd.shape[0])
-            points_noise_pcd = points_noise_pcd[shuffled_idx]
-            points_noise_occ = points_noise_occ[shuffled_idx]
-
-            return points_noise_pcd, points_noise_occ
     def __init__(self, dataset_folder, prefix,
                  categories=None, no_except=True, transform=None, cfg=None):
         ''' Initialization of the the 3D shape dataset.
@@ -473,7 +397,6 @@ class GeometricBreaksDataset:
         self.dataset_folder = dataset_folder
         self.prefix = prefix
         self.field = self.BrokenPointsField('pointcloud.npz', unpackbits=False, multi_files=-1)
-        self.transform2 = self.NoiseHole(careless_noise_integration=False)
         self.no_except = no_except
         self.transform = transform
         self.cfg = cfg
@@ -519,6 +442,16 @@ class GeometricBreaksDataset:
     def __len__(self):
         return len(self.models)
 
+    @staticmethod
+    def _infer_occ(noise, gt):
+        # roughly estimate distance between points in point cloud
+        dist_sq = cdist(gt, gt, 'sqeuclidean')
+        np.fill_diagonal(dist_sq, np.inf)
+        in_dist = np.max(np.min(dist_sq, axis=0))
+
+        mask = (cdist(noise, gt, 'sqeuclidean').min(axis=1) <= in_dist)
+        return mask
+
     def __getitem__(self, idx):
         ''' Returns an item of the dataset.
 
@@ -546,11 +479,11 @@ class GeometricBreaksDataset:
         partial = partial[np.random.permutation(partial.shape[0])][:2048]
         restoration = restoration[np.random.permutation(restoration.shape[0])][:2048]
         complete = complete[np.random.permutation(complete.shape[0])[:2048]]
+        noise = np.random.uniform(-1 / 2, 1 / 2, size=(2048, partial.shape[1]))
         if self.prefix == 'test':
-            noise = np.random.uniform(-1 / 2, 1 / 2, size=(2048, partial.shape[1]))
             occ = None
         else:
-            noise, occ = self.transform2(complete)
+            occ = self._infer_occ(noise, complete)
             occ = torch.from_numpy(occ)
 
         partial = torch.from_numpy(partial)
