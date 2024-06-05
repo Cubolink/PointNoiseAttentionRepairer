@@ -16,7 +16,7 @@ from dataset import C3D_h5, PCN_pcd, GeometricBreaksDataset
 
 def train():
     logging.info(str(args))
-    metrics = ['bce', 'cd_t_coarse', 'cd_p_coarse']
+    metrics = ['bce', 'cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
     best_epoch_losses = {m: (0, 0) if m == 'f1' else (0, math.inf) for m in metrics}
     train_loss_meter = AverageValueMeter()
     val_loss_meters = {m: AverageValueMeter() for m in metrics}
@@ -96,17 +96,17 @@ def train():
         for i, data in enumerate(dataloader, 0):
             optimizer.zero_grad()
     
-            _, inputs, noisy_gt, noisy_gt_occupancy, restoration_gt = data
+            _, inputs, noise, occ_gt, restoration_gt = data
             # mean_feature = None
     
             inputs = inputs.float().cuda()
-            noisy_gt = noisy_gt.float().cuda()
-            noisy_gt_occupancy = noisy_gt_occupancy.float().cuda()
+            noise = noise.float().cuda()
+            occ_gt = occ_gt.float().cuda()
 
             inputs = inputs.transpose(2, 1).contiguous()
-            noisy_gt = noisy_gt.transpose(2, 1).contiguous()
+            noise = noise.transpose(2, 1).contiguous()
     
-            out2, loss2, net_loss = net(inputs, noisy_gt, restoration_gt, noisy_gt_occupancy)
+            loss1, loss2, loss3, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=occ_gt)
     
             train_loss_meter.update(net_loss.mean().item())
     
@@ -115,8 +115,12 @@ def train():
             optimizer.step()
     
             if i % args.step_interval_to_print == 0:
-                logging.info(exp_name + ' train [%d: %d/%d]  loss_type: %s, fine_loss: %f total_loss: %f lr: %f' %
-                             (epoch, i, len(dataset) / args.batch_size, args.loss, loss2.mean().item(), net_loss.mean().item(), lr))
+                logging.info(exp_name + f' train [{epoch}: {i}/{len(dataset)/args.batch_size}] loss_type: {args.loss},'
+                                        f' bce_loss: {loss1.mean().item()}'
+                                        f' fine_loss: {loss2.mean().item()}'
+                                        f' coarse_loss: {loss3.mean().item()}'
+                                        f' total_loss: {net_loss.mean().item()} lr: {lr}'
+                             )
     
         if epoch % args.epoch_interval_to_save == 0:
             save_model('%s/network.pth' % log_dir, net)
@@ -134,16 +138,16 @@ def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses
 
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
-            label, inputs, noisy_gt, noisy_gt_occ, restoration_gt = data
+            label, inputs, noise, occ_gt, restoration_gt = data
             # mean_feature = None
     
             inputs = inputs.float().cuda()
-            noisy_gt = noisy_gt.float().cuda()
-            noisy_gt_occ = noisy_gt_occ.float().cuda()
+            noise = noise.float().cuda()
+            occ_gt = occ_gt.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
-            noisy_gt = noisy_gt.transpose(2, 1).contiguous()
-            # result_dict = net(inputs, gt, is_training=False, mean_feature=mean_feature)
-            result_dict = net(inputs, noisy_gt, restoration_gt, noisy_gt_occ, is_training=False)
+            noise = noise.transpose(2, 1).contiguous()
+
+            result_dict = net(inputs, noise, gt_coarse=restoration_gt, gt=occ_gt, is_training=False)
             for k, v in val_loss_meters.items():
                 v.update(result_dict[k].mean().item())
     
