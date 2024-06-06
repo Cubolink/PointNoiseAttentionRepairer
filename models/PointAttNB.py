@@ -1,4 +1,4 @@
-from PointAttN import *
+from .PointAttN import *
 
 
 class Model(nn.Module):
