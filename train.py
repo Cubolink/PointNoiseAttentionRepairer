@@ -103,7 +103,7 @@ def train():
             gt = gt.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
     
-            out2, loss2, net_loss = net(inputs, gt)
+            loss1, loss2, loss3, net_loss = net(inputs, gt)
     
             train_loss_meter.update(net_loss.mean().item())
     
@@ -112,8 +112,14 @@ def train():
             optimizer.step()
     
             if i % args.step_interval_to_print == 0:
-                logging.info(exp_name + ' train [%d: %d/%d]  loss_type: %s, fine_loss: %f total_loss: %f lr: %f' %
-                             (epoch, i, len(dataset) / args.batch_size, args.loss, loss2.mean().item(), net_loss.mean().item(), lr))
+                logging.info(
+                    exp_name + f' train [{epoch}: {i}/{len(self.dataset) / args.batch_size}]  loss_type: {args.loss},'
+                               f' fine1_loss: {loss1.mean().item()}'
+                               f' fine_loss: {loss2.mean().item()}'
+                               f' coarse_loss: {loss3.mean().item()}'
+                               f' total_loss: {net_loss.mean().item()}'
+                               f' lr: {lr}'
+                )
     
         if epoch % args.epoch_interval_to_save == 0:
             save_model('%s/network.pth' % log_dir, net)

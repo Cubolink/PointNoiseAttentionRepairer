@@ -264,7 +264,7 @@ class Model(nn.Module):
 
             total_train_loss = loss1.mean() + loss2.mean() + loss3.mean()
 
-            return fine, loss2, total_train_loss
+            return loss3, loss2, loss1, total_train_loss
         else:
             cd_p, cd_t = calc_cd(fine1, gt)
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt)
