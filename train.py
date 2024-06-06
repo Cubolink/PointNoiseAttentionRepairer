@@ -121,7 +121,7 @@ def train():
     
             if i % args.step_interval_to_print == 0:
                 logging.info(exp_name + f' train [{epoch}: {i}/{len(dataset)/args.batch_size}] loss_type: {args.loss},'
-                                        f' bce_loss: {loss1.mean().item() if args.model_name == 'PointAttNB' else None}'
+                                        f' bce_loss: {loss1.mean().item() if args.model_name == "PointAttNB" else None}'
                                         f' fine_loss: {loss2.mean().item()}'
                                         f' coarse_loss: {loss3.mean().item()}'
                                         f' total_loss: {net_loss.mean().item()} lr: {lr}'
