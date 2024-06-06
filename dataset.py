@@ -373,7 +373,7 @@ class GeometricBreaksDataset:
             return category, broken_points, restoration_points, complete_points
 
     def __init__(self, dataset_folder, prefix,
-                 categories=None, no_except=True, transform=None, cfg=None):
+                 categories=None, no_except=True, transform=None, cfg=None, use_occ=False):
         ''' Initialization of the the 3D shape dataset.
 
         Args:
@@ -384,6 +384,7 @@ class GeometricBreaksDataset:
             no_except (bool): no exception
             transform (callable): transformation applied to data points
             cfg (yaml): config file
+            use_occ: whether to give occupancy values as ground truth or points
         '''
         # Get split
         splits = {
@@ -400,6 +401,7 @@ class GeometricBreaksDataset:
         self.no_except = no_except
         self.transform = transform
         self.cfg = cfg
+        self.use_occ = True
         self.sample = 1
 
         # If categories is None, use all subfolders
@@ -480,7 +482,8 @@ class GeometricBreaksDataset:
         restoration = restoration[np.random.permutation(restoration.shape[0])][:2048]
         complete = complete[np.random.permutation(complete.shape[0])[:2048]]
         noise = np.random.uniform(-1 / 2, 1 / 2, size=(2048, partial.shape[1]))
-        if self.prefix == 'test':
+
+        if not self.use_occ or self.prefix == 'test':
             occ = None
         else:
             occ = self._infer_occ(noise, complete)
@@ -493,8 +496,10 @@ class GeometricBreaksDataset:
 
         if self.prefix == 'test':
             return label, partial, noise, complete, restoration, model
-        else:
+        elif self.use_occ:
             return label, partial, noise, occ, restoration
+        else:
+            return label, partial, noise, complete, restoration
 
 
 if __name__ == '__main__':
@@ -503,7 +508,3 @@ if __name__ == '__main__':
                                              shuffle=True, num_workers=0)
     for idx, data in enumerate(dataloader, 0):
         print(data.shape)
-
-
-
-

@@ -66,12 +66,19 @@ def test():
                         os.makedirs(path)
                     path = os.path.join(path, str(obj[j]) + '.obj')
 
-                    mask = (result_dict['out2'][j] < 1).all(axis=1)
-                    save_obj(result_dict['out2'][j][mask], path)
-                    save_obj(
-                        torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j][mask]], dim=0),
-                        path.replace('.obj', '+inputs.obj')
-                    )
+                    if args.model_name == 'PointAttN':
+                        mask = (result_dict['out2'][j] < 1).all(axis=1)
+                        save_obj(result_dict['out2'][j][mask], path)
+                        save_obj(
+                            torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j][mask]], dim=0),
+                            path.replace('.obj', '+inputs.obj')
+                        )
+                    else:
+                        save_obj(result_dict['out2'][j], path)
+                        save_obj(
+                            torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j]]),
+                            path.replace('.obj', '+inputs.obj')
+                        )
                     save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
                     save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
                     save_obj(

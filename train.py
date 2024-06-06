@@ -16,7 +16,9 @@ from dataset import C3D_h5, PCN_pcd, GeometricBreaksDataset
 
 def train():
     logging.info(str(args))
-    metrics = ['bce', 'cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
+    metrics = ['cd_p', 'cd_t', 'cd_t_coarse', 'cd_p_coarse']
+    if args.model_name == 'PointAttN':
+        metrics = ['bce', 'cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
     best_epoch_losses = {m: (0, 0) if m == 'f1' else (0, math.inf) for m in metrics}
     train_loss_meter = AverageValueMeter()
     val_loss_meters = {m: AverageValueMeter() for m in metrics}
@@ -28,8 +30,8 @@ def train():
         dataset = C3D_h5(args.c3dpath, prefix="train")
         dataset_test = C3D_h5(args.c3dpath, prefix="val")
     elif args.dataset == 'chs':
-        dataset = GeometricBreaksDataset(args.chspath, prefix="train")
-        dataset_test = GeometricBreaksDataset(args.chspath, prefix="val")
+        dataset = GeometricBreaksDataset(args.chspath, prefix="train", use_occ=(args.model_name == 'PointAttN'))
+        dataset_test = GeometricBreaksDataset(args.chspath, prefix="val", use_occ=(args.model_name == 'PointAttN'))
     else:
         raise ValueError('dataset does not exist')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size,
@@ -96,17 +98,20 @@ def train():
         for i, data in enumerate(dataloader, 0):
             optimizer.zero_grad()
     
-            _, inputs, noise, occ_gt, restoration_gt = data
+            _, inputs, noise, gt, restoration_gt = data
             # mean_feature = None
     
             inputs = inputs.float().cuda()
             noise = noise.float().cuda()
-            occ_gt = occ_gt.float().cuda()
+            gt = gt.float().cuda()
 
             inputs = inputs.transpose(2, 1).contiguous()
             noise = noise.transpose(2, 1).contiguous()
-    
-            loss1, loss2, loss3, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=occ_gt)
+
+            if args.model_name == 'PointAttN':
+                loss1, loss2, loss3, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=gt)
+            else:
+                loss2, loss3, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=gt)
     
             train_loss_meter.update(net_loss.mean().item())
     
@@ -116,7 +121,7 @@ def train():
     
             if i % args.step_interval_to_print == 0:
                 logging.info(exp_name + f' train [{epoch}: {i}/{len(dataset)/args.batch_size}] loss_type: {args.loss},'
-                                        f' bce_loss: {loss1.mean().item()}'
+                                        f' bce_loss: {loss1.mean().item() if args.model_name == 'PointAttN' else None}'
                                         f' fine_loss: {loss2.mean().item()}'
                                         f' coarse_loss: {loss3.mean().item()}'
                                         f' total_loss: {net_loss.mean().item()} lr: {lr}'
@@ -138,16 +143,16 @@ def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses
 
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
-            label, inputs, noise, occ_gt, restoration_gt = data
+            label, inputs, noise, gt, restoration_gt = data
             # mean_feature = None
     
             inputs = inputs.float().cuda()
             noise = noise.float().cuda()
-            occ_gt = occ_gt.float().cuda()
+            gt = gt.float().cuda()
             inputs = inputs.transpose(2, 1).contiguous()
             noise = noise.transpose(2, 1).contiguous()
 
-            result_dict = net(inputs, noise, gt_coarse=restoration_gt, gt=occ_gt, is_training=False)
+            result_dict = net(inputs, noise, gt_coarse=restoration_gt, gt=gt, is_training=False)
             for k, v in val_loss_meters.items():
                 v.update(result_dict[k].mean().item())
     

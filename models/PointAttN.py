@@ -6,6 +6,7 @@ import torch.utils.data
 import torch.nn.functional as F
 import math
 from utils.model_utils import *
+from sklearn.cluster import KMeans
 
 from pytorch3d.ops import sample_farthest_points
 
@@ -162,6 +163,44 @@ class PrimalExtractor(nn.Module):  # Beta name.
         return x, extracted_mask
 
 
+class Denoiser(nn.Module):  # Beta name.
+    def __init__(self, channel=128):
+        super(Denoiser, self).__init__()
+        self.conv_11 = nn.Conv1d(512, 256, kernel_size=1)
+        self.conv_1 = nn.Conv1d(256, channel, kernel_size=1)
+
+        self.conv_x = nn.Conv1d(3, 64, kernel_size=1)
+        self.conv_x1 = nn.Conv1d(64, channel, kernel_size=1)
+
+        self.conv_z = nn.Conv1d(3, 64, kernel_size=1)
+        self.conv_z1 = nn.Conv1d(64, channel * 2, kernel_size=1)
+
+        self.sfa0 = SFA(channel * 2, channel * 2)
+        self.gdp2 = GDP2(channel * 2, 256)
+        self.sfa2 = SFA(512, 512)
+        self.sfa3 = SFA(512, channel)
+
+        self.relu = nn.GELU()
+
+        self.channel = channel
+
+        self.conv_out1 = nn.Conv1d(channel, 64, kernel_size=1)
+        self.conv_out = nn.Conv1d(64, 3, kernel_size=1)
+
+    def forward(self, coarse, feat_g, noise):
+        y = self.conv_x1(self.relu(self.conv_x(coarse)))  # B, C, N
+        feat_g = self.conv_1(self.relu(self.conv_11(feat_g)))  # B, C, N
+        y0 = torch.cat([y, feat_g.repeat(1, 1, y.shape[-1])], dim=1)
+        z = self.conv_z1(self.relu(self.conv_z(noise)))  # B, C, N
+
+        y0 = self.sfa0(y0)
+        z1, _ = self.gdp2(y0, z, noise)
+        z2 = self.sfa3(self.sfa2(z1))
+
+        x = self.conv_out(self.relu(self.conv_out1(z2)))
+        return x + noise
+
+
 class PointGenerator(nn.Module):
     def __init__(self, channel=128, ratio=1):
         super(PointGenerator, self).__init__()
@@ -286,28 +325,16 @@ class SeedGenerator(nn.Module):
 
         return new_x, coarse
 
-
+# Occ model
 class Model(nn.Module):
-    def __init__(self, args):
+    def __init__(self):
         super(Model, self).__init__()
-        if args.dataset == 'pcn':
-            step1 = 4
-            step2 = 8
-        elif args.dataset == 'c3d':
-            step1 = 1
-            step2 = 4
-        elif args.dataset == 'chs':
-            step1 = 4
-            step2 = 8
-        else:
+        if args.dataset != 'chs':
             raise ValueError('dataset does not exist')
 
         self.feature_extractor = FeatureExtractor()
         self.seed_generator = SeedGenerator()
-
         self.refine = PrimalExtractor()
-        # self.refine = PointGenerator(ratio=step1)
-        # self.refine1 = PointGenerator(ratio=step2)
 
     @staticmethod
     def _filter_noise(noise, mask):
