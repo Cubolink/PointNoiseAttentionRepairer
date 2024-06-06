@@ -119,9 +119,9 @@ class GDP2(nn.Module):  # Maybe Noise Details Perception, NDP
         return x1, noise
 
 
-class PrimalExtractor(nn.Module):  # Beta name.
+class Denoiser(nn.Module):  # Beta name.
     def __init__(self, channel=128):
-        super(PrimalExtractor, self).__init__()
+        super(Denoiser, self).__init__()
         self.conv_11 = nn.Conv1d(512, 256, kernel_size=1)
         self.conv_1 = nn.Conv1d(256, channel, kernel_size=1)
 
@@ -300,7 +300,7 @@ class Model(nn.Module):
         self.feature_extractor = FeatureExtractor()
         self.seed_generator = SeedGenerator()
 
-        self.refine = PrimalExtractor()
+        self.refine = Denoiser()
         # self.refine = PointGenerator(ratio=step1)
         # self.refine1 = PointGenerator(ratio=step2)
 
