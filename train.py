@@ -17,7 +17,7 @@ from dataset import C3D_h5, PCN_pcd, GeometricBreaksDataset
 def train():
     logging.info(str(args))
     metrics = ['cd_p', 'cd_t', 'cd_t_coarse', 'cd_p_coarse']
-    if args.model_name == 'PointAttN':
+    if args.model_name == 'PointAttNB':
         metrics = ['bce', 'cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
     best_epoch_losses = {m: (0, 0) if m == 'f1' else (0, math.inf) for m in metrics}
     train_loss_meter = AverageValueMeter()
@@ -30,8 +30,8 @@ def train():
         dataset = C3D_h5(args.c3dpath, prefix="train")
         dataset_test = C3D_h5(args.c3dpath, prefix="val")
     elif args.dataset == 'chs':
-        dataset = GeometricBreaksDataset(args.chspath, prefix="train", use_occ=(args.model_name == 'PointAttN'))
-        dataset_test = GeometricBreaksDataset(args.chspath, prefix="val", use_occ=(args.model_name == 'PointAttN'))
+        dataset = GeometricBreaksDataset(args.chspath, prefix="train", use_occ=(args.model_name == 'PointAttNB'))
+        dataset_test = GeometricBreaksDataset(args.chspath, prefix="val", use_occ=(args.model_name == 'PointAttNB'))
     else:
         raise ValueError('dataset does not exist')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size,
@@ -108,7 +108,7 @@ def train():
             inputs = inputs.transpose(2, 1).contiguous()
             noise = noise.transpose(2, 1).contiguous()
 
-            if args.model_name == 'PointAttN':
+            if args.model_name == 'PointAttNB':
                 loss1, loss2, loss3, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=gt)
             else:
                 loss2, loss3, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=gt)
@@ -121,7 +121,7 @@ def train():
     
             if i % args.step_interval_to_print == 0:
                 logging.info(exp_name + f' train [{epoch}: {i}/{len(dataset)/args.batch_size}] loss_type: {args.loss},'
-                                        f' bce_loss: {loss1.mean().item() if args.model_name == 'PointAttN' else None}'
+                                        f' bce_loss: {loss1.mean().item() if args.model_name == 'PointAttNB' else None}'
                                         f' fine_loss: {loss2.mean().item()}'
                                         f' coarse_loss: {loss3.mean().item()}'
                                         f' total_loss: {net_loss.mean().item()} lr: {lr}'

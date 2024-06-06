@@ -66,7 +66,7 @@ def test():
                         os.makedirs(path)
                     path = os.path.join(path, str(obj[j]) + '.obj')
 
-                    if args.model_name == 'PointAttN':
+                    if args.model_name == 'PointAttNB':
                         mask = (result_dict['out2'][j] < 1).all(axis=1)
                         save_obj(result_dict['out2'][j][mask], path)
                         save_obj(
