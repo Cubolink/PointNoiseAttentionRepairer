@@ -2,7 +2,7 @@ from PointAttN import *
 
 
 class Model(nn.Module):
-    def __init__(self):
+    def __init__(self, args):
         super(Model, self).__init__()
         if args.dataset != 'chs':
             raise ValueError('dataset does not exist')

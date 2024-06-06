@@ -1,9 +1,9 @@
 from PointAttN import *
 
 
-class ModelA(nn.Module):
-    def __init__(self):
-        super(ModelA, self).__init__()
+class Model(nn.Module):
+    def __init__(self, args):
+        super(Model, self).__init__()
         if args.dataset != 'chs':
             raise ValueError('dataset does not exist')
 
