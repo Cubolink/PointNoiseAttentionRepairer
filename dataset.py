@@ -401,7 +401,7 @@ class GeometricBreaksDataset:
         self.no_except = no_except
         self.transform = transform
         self.cfg = cfg
-        self.use_occ = True
+        self.use_occ = use_occ
         self.sample = 1
 
         # If categories is None, use all subfolders
