@@ -48,8 +48,10 @@ def train():
     logging.info('Random Seed: %d' % seed)
     random.seed(seed)
     torch.manual_seed(seed)
-    
+
     model_module = importlib.import_module('.%s' % args.model_name, 'models')
+    train_step = model_module.train_step
+    val_step = model_module.val_step
     net = torch.nn.DataParallel(model_module.Model(args))
     net.cuda()
     if hasattr(model_module, 'weights_init'):
@@ -97,34 +99,17 @@ def train():
     
         for i, data in enumerate(dataloader, 0):
             optimizer.zero_grad()
-    
-            _, inputs, noise, gt, restoration_gt = data
-            # mean_feature = None
-    
-            inputs = inputs.float().cuda()
-            noise = noise.float().cuda()
-            gt = gt.float().cuda()
 
-            inputs = inputs.transpose(2, 1).contiguous()
-            noise = noise.transpose(2, 1).contiguous()
+            net_loss, summary_string = train_step(data, net, i % args.step_interval_to_print == 0)
 
-            if args.model_name == 'PointAttNB':
-                loss1, loss2, loss3, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=gt)
-            else:
-                loss2, loss3, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=gt)
-    
             train_loss_meter.update(net_loss.mean().item())
-    
             net_loss.backward(torch.squeeze(torch.ones(torch.cuda.device_count())).cuda())
-    
             optimizer.step()
-    
+
             if i % args.step_interval_to_print == 0:
                 logging.info(exp_name + f' train [{epoch}: {i}/{len(dataset)/args.batch_size}] loss_type: {args.loss},'
-                                        f' bce_loss: {loss1.mean().item() if args.model_name == "PointAttNB" else None}'
-                                        f' fine_loss: {loss2.mean().item()}'
-                                        f' coarse_loss: {loss3.mean().item()}'
-                                        f' total_loss: {net_loss.mean().item()} lr: {lr}'
+                                        f' {summary_string}'
+                                        f' lr: {lr}'
                              )
     
         if epoch % args.epoch_interval_to_save == 0:
@@ -132,10 +117,10 @@ def train():
             logging.info("Saving net...")
     
         if epoch % args.epoch_interval_to_val == 0 or epoch == args.nepoch - 1:
-            val(net, epoch, val_loss_meters, dataloader_test, best_epoch_losses)
+            val(net, epoch, val_loss_meters, dataloader_test, best_epoch_losses, val_step)
 
 
-def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses):
+def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses, val_step):
     logging.info('Testing...')
     for v in val_loss_meters.values():
         v.reset()
@@ -143,16 +128,7 @@ def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses
 
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
-            label, inputs, noise, gt, restoration_gt = data
-            # mean_feature = None
-    
-            inputs = inputs.float().cuda()
-            noise = noise.float().cuda()
-            gt = gt.float().cuda()
-            inputs = inputs.transpose(2, 1).contiguous()
-            noise = noise.transpose(2, 1).contiguous()
-
-            result_dict = net(inputs, noise, gt_coarse=restoration_gt, gt=gt, is_training=False)
+            result_dict = val_step(data, net)
             for k, v in val_loss_meters.items():
                 v.update(result_dict[k].mean().item())
     

@@ -40,3 +40,40 @@ class Model(nn.Module):
                 'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
                 'cd_p': cd_p, 'cd_t': cd_t
             }
+
+
+def train_step(data, net, do_summary_string):
+    _, inputs, noise, gt, restoration_gt = data
+
+    inputs = inputs.float().cuda()
+    noise = noise.float().cuda()
+    gt = gt.float().cuda()
+
+    inputs = inputs.transpose(2, 1).contiguous()
+    noise = noise.transpose(2, 1).contiguous()
+
+    loss2, loss3, net_loss = net(inputs, noise, gt_coarse=restoration_gt, gt=gt)
+
+    summary_string = None
+    if do_summary_string:
+        summary_string = (
+            f' fine_loss: {loss2.mean().item()}'
+            f' coarse_loss: {loss3.mean().item()}'
+            f' total_loss: {net_loss.mean().item()}'
+        )
+
+    return net_loss, summary_string
+
+
+def val_step(data, net):
+    label, inputs, noise, gt, restoration_gt = data
+
+    inputs = inputs.float().cuda()
+    noise = noise.float().cuda()
+    gt = gt.float().cuda()
+
+    inputs = inputs.transpose(2, 1).contiguous()
+    noise = noise.transpose(2, 1).contiguous()
+
+    result_dict = net(inputs, noise, gt_coarse=restoration_gt, gt=gt, is_training=False)
+    return result_dict
