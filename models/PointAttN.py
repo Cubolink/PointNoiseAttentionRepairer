@@ -324,3 +324,88 @@ class SeedGenerator(nn.Module):
         new_x = new_x.transpose(1, 2)
 
         return new_x, coarse
+
+
+class Model(nn.Module):
+    def __init__(self, args):
+        super(Model, self).__init__()
+        if args.dataset == 'pcn':
+            step1 = 4
+            step2 = 8
+        elif args.dataset == 'c3d':
+            step1 = 1
+            step2 = 4
+        elif args.dataset == 'chs':
+            step1 = 4
+            step2 = 8
+        else:
+            raise ValueError('dataset does not exist')
+
+        self.feature_extractor = FeatureExtractor()
+        self.seed_generator = SeedGenerator()
+
+        self.refine = PointGenerator(ratio=step1)
+        self.refine1 = PointGenerator(ratio=step2)
+
+    def forward(self, x, gt=None, is_training=True):
+        feat_g = self.feature_extractor(x)
+        seeds, coarse = self.seed_generator(feat_g, x)
+
+        fine, _ = self.refine(seeds, feat_g)
+        fine1, _ = self.refine1(fine, feat_g)
+
+        coarse = coarse.transpose(1, 2).contiguous()
+        fine = fine.transpose(1, 2).contiguous()
+        fine1 = fine1.transpose(1, 2).contiguous()
+
+        if is_training:
+            loss3, _ = calc_cd(fine1, gt)
+            gt_fine1, _ = sample_farthest_points(gt, K=fine.shape[1])
+
+            loss2, _ = calc_cd(fine, gt_fine1)
+            gt_coarse, _ = sample_farthest_points(gt_fine1, K=coarse.shape[1])
+
+            loss1, _ = calc_cd(coarse, gt_coarse)
+
+            total_train_loss = loss1.mean() + loss2.mean() + loss3.mean()
+
+            return fine, loss2, total_train_loss
+        else:
+            cd_p, cd_t = calc_cd(fine1, gt)
+            cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt)
+
+            return {
+                'out1': coarse, 'out2': fine1,
+                'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
+                'cd_p': cd_p, 'cd_t': cd_t
+            }
+
+
+def train_step(data, net, do_summary_string):
+    _, inputs, gt = data
+
+    inputs = inputs.float().cuda()
+    gt = gt.float().cuda()
+    inputs = inputs.transpose(2, 1).contiguous()
+
+    out2, loss2, net_loss = net(inputs, gt)
+
+    summary_string = None
+    if do_summary_string:
+        summary_string = (
+            f' fine_loss {loss2.mean().item()}'
+            f' total_loss: {net_loss.mean().item()}'
+        )
+
+    return net_loss, summary_string
+
+
+def val_step(data, net):
+    label, inputs, gt = data
+
+    inputs = inputs.float().cuda()
+    gt = gt.float().cuda()
+    inputs = inputs.transpose(2, 1).contiguous()
+    result_dict = net(inputs, gt, is_training=False)
+
+    return result_dict
