@@ -25,7 +25,7 @@ def train():
 
     if args.dataset == 'pcn':
         dataset = PCN_pcd(args.pcnpath, prefix="train")
-        dataset_test = PCN_pcd(args.pcnpath, prefix="test")
+        dataset_test = PCN_pcd(args.pcnpath, prefix="val")
     elif args.dataset == 'c3d':
         dataset = C3D_h5(args.c3dpath, prefix="train")
         dataset_test = C3D_h5(args.c3dpath, prefix="val")
