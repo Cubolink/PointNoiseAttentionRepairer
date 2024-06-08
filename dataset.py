@@ -502,6 +502,22 @@ class GeometricBreaksDataset:
             return label, partial, noise, complete, restoration
 
 
+class GeometricBreaksDatasetNoNoise(GeometricBreaksDataset):
+    """
+    The same GeometricBreaksDataset, but PointAttN-compatible (it doesn't return noise)
+    """
+    def __init__(self, dataset_folder, prefix, categories=None, no_except=True, transform=None, cfg=None):
+        super().__init__(dataset_folder, prefix, categories, no_except, transform, cfg, use_occ=False)
+
+    def __getitem__(self, idx):
+        if self.prefix == 'test':
+            label, partial, noise, complete, restoration, model = super().__getitem__(idx)
+        else:
+            label, partial, noise, complete, restoration = super().__getitem__(idx)
+
+        return label, partial, complete
+
+
 if __name__ == '__main__':
     dataset = C3D_h5(prefix='test')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,
