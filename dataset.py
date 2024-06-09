@@ -512,9 +512,9 @@ class GeometricBreaksDatasetNoNoise(GeometricBreaksDataset):
     def __getitem__(self, idx):
         if self.prefix == 'test':
             label, partial, noise, complete, restoration, model = super().__getitem__(idx)
-        else:
-            label, partial, noise, complete, restoration = super().__getitem__(idx)
+            return label, partial, complete, model
 
+        label, partial, noise, complete, restoration = super().__getitem__(idx)
         return label, partial, complete
 
 

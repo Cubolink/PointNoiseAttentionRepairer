@@ -6,22 +6,9 @@ import argparse
 import munch
 import yaml
 from utils.train_utils import *
+from utils.test_utils import *
 from dataset import C3D_h5
-import h5py
 
-def save_h5(data, path):
-    f = h5py.File(path, 'w')
-    a = data.data.cpu().numpy()
-    print(a.shape)
-    f.create_dataset('data', data=a)
-    f.close()
-
-def save_obj(point, path):
-    n = point.shape[0]
-    with open(path, 'w') as f:
-        for i in range(n):
-            f.write("v {0} {1} {2}\n".format(point[i][0],point[i][1],point[i][2]))
-    f.close()
 
 def test():
     dataset_test = C3D_h5(args.c3dpath, prefix="test")

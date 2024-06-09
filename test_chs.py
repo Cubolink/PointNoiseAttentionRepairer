@@ -6,19 +6,15 @@ import argparse
 import munch
 import yaml
 from utils.train_utils import *
-from dataset import GeometricBreaksDataset
-
-
-def save_obj(point, path):
-    n = point.shape[0]
-    with open(path, 'w') as f:
-        for i in range(n):
-            f.write("v {0} {1} {2}\n".format(point[i][0], point[i][1], point[i][2]))
-    f.close()
+from utils.test_utils import *
+from dataset import GeometricBreaksDataset, GeometricBreaksDatasetNoNoise
 
 
 def test():
-    dataset_test = GeometricBreaksDataset(args.chspath, prefix="test")
+    if args.model_name == 'PointAttN':
+        dataset_test = GeometricBreaksDatasetNoNoise(args.chspath, prefix="test")
+    else:
+        dataset_test = GeometricBreaksDataset(args.chspath, prefix="test")
     dataloader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size,
                                                   shuffle=False, num_workers=int(args.workers))
     dataset_length = len(dataset_test)
@@ -41,14 +37,19 @@ def test():
 
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
+            if args.model_name == 'PointAttN':
+                label, inputs_cpu, complete_gt_cpu, obj = data
+                inputs = inputs_cpu.float().cuda()
+                inputs = inputs.transpose(2, 1).contiguous()
+                result_dict = net(inputs, gt=complete_gt_cpu, is_training=False)
+            else:
+                label, inputs_cpu, noise_cpu, complete_gt_cpu, restoration_gt_cpu, obj = data
 
-            label, inputs_cpu, noise_cpu, complete_gt_cpu, restoration_gt_cpu, obj = data
-
-            inputs = inputs_cpu.float().cuda()
-            noise = noise_cpu.float().cuda()
-            inputs = inputs.transpose(2, 1).contiguous()
-            noise = noise.transpose(2, 1).contiguous()
-            result_dict = net(inputs, noise, gt_coarse=restoration_gt_cpu, gt=complete_gt_cpu, is_training=False)
+                inputs = inputs_cpu.float().cuda()
+                noise = noise_cpu.float().cuda()
+                inputs = inputs.transpose(2, 1).contiguous()
+                noise = noise.transpose(2, 1).contiguous()
+                result_dict = net(inputs, noise, gt_coarse=restoration_gt_cpu, gt=complete_gt_cpu, is_training=False)
             for k, v in test_loss_meters.items():
                 v.update(result_dict[k].mean().item())
 
