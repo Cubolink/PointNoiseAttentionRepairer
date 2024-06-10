@@ -369,7 +369,7 @@ class Model(nn.Module):
 
             total_train_loss = loss1.mean() + loss2.mean() + loss3.mean()
 
-            return fine, loss2, total_train_loss
+            return loss3, loss2, loss1, total_train_loss
         else:
             cd_p, cd_t = calc_cd(fine1, gt)
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt)
@@ -388,12 +388,14 @@ def train_step(data, net, do_summary_string):
     gt = gt.float().cuda()
     inputs = inputs.transpose(2, 1).contiguous()
 
-    out2, loss2, net_loss = net(inputs, gt)
+    loss1, loss2, loss3, net_loss = net(inputs, gt)
 
     summary_string = None
     if do_summary_string:
         summary_string = (
+            f' fine1_loss {loss1.mean().item()}'
             f' fine_loss {loss2.mean().item()}'
+            f' coarse_loss {loss3.mean().item()}'
             f' total_loss: {net_loss.mean().item()}'
         )
 
