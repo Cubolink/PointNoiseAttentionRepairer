@@ -6,6 +6,7 @@ import torch.utils.data
 import torch.nn.functional as F
 import math
 from utils.model_utils import *
+from sklearn.cluster import KMeans
 
 from pytorch3d.ops import sample_farthest_points
 
@@ -94,6 +95,110 @@ class SFA(nn.Module):
     def forward(self, x):
         x1 = self.cross_transformer(x, x).contiguous()
         return x1
+
+
+class GDP2(nn.Module):  # Maybe Noise Details Perception, NDP
+    def __init__(self, d_model=256, d_model_out=256, nhead=4, dim_feedforward=1024, dropout=0.0):
+        super().__init__()
+        self.cross_transformer = cross_transformer(d_model, d_model_out, nhead, dim_feedforward, dropout)
+
+    def forward(self, x0, y0, noise):
+        """
+        Args:
+            x0: encoded points
+            y0: encoded noise
+            noise:
+
+        Returns:
+
+        """
+
+        x1 = self.cross_transformer(y0, x0).contiguous()
+        x1 = torch.cat([y0, x1], dim=1)
+
+        return x1, noise
+
+
+class PrimalExtractor(nn.Module):  # Beta name.
+    def __init__(self, channel=128):
+        super(PrimalExtractor, self).__init__()
+        self.conv_11 = nn.Conv1d(512, 256, kernel_size=1)
+        self.conv_1 = nn.Conv1d(256, channel, kernel_size=1)
+
+        self.conv_x = nn.Conv1d(3, 64, kernel_size=1)
+        self.conv_x1 = nn.Conv1d(64, channel, kernel_size=1)
+
+        self.conv_z = nn.Conv1d(3, 64, kernel_size=1)
+        self.conv_z1 = nn.Conv1d(64, channel * 2, kernel_size=1)
+
+        self.sfa0 = SFA(channel * 2, channel * 2)
+        self.gdp2 = GDP2(channel * 2, 256)
+        self.sfa2 = SFA(512, 512)
+        self.sfa3 = SFA(512, channel)
+
+        self.relu = nn.GELU()
+
+        self.channel = channel
+
+        self.conv_out1 = nn.Conv1d(channel, 64, kernel_size=1)
+        self.conv_out = nn.Conv1d(64, 1, kernel_size=1)
+
+        self.sigmoid = nn.Sigmoid()
+        self.threshold_selector = nn.Parameter(torch.tensor(0.5))
+
+    def forward(self, coarse, feat_g, noise):
+        y = self.conv_x1(self.relu(self.conv_x(coarse)))  # B, C, N
+        feat_g = self.conv_1(self.relu(self.conv_11(feat_g)))  # B, C, N
+        y0 = torch.cat([y, feat_g.repeat(1, 1, y.shape[-1])], dim=1)
+        z = self.conv_z1(self.relu(self.conv_z(noise)))  # B, C, N
+
+        y0 = self.sfa0(y0)
+        z1, _ = self.gdp2(y0, z, noise)
+        z2 = self.sfa3(self.sfa2(z1))
+
+        x = self.conv_out(self.relu(self.conv_out1(z2)))
+
+        occ = self.sigmoid(x)
+        extracted_mask = (occ >= self.threshold_selector)
+        return x, extracted_mask
+
+
+class Denoiser(nn.Module):  # Beta name.
+    def __init__(self, channel=128):
+        super(Denoiser, self).__init__()
+        self.conv_11 = nn.Conv1d(512, 256, kernel_size=1)
+        self.conv_1 = nn.Conv1d(256, channel, kernel_size=1)
+
+        self.conv_x = nn.Conv1d(3, 64, kernel_size=1)
+        self.conv_x1 = nn.Conv1d(64, channel, kernel_size=1)
+
+        self.conv_z = nn.Conv1d(3, 64, kernel_size=1)
+        self.conv_z1 = nn.Conv1d(64, channel * 2, kernel_size=1)
+
+        self.sfa0 = SFA(channel * 2, channel * 2)
+        self.gdp2 = GDP2(channel * 2, 256)
+        self.sfa2 = SFA(512, 512)
+        self.sfa3 = SFA(512, channel)
+
+        self.relu = nn.GELU()
+
+        self.channel = channel
+
+        self.conv_out1 = nn.Conv1d(channel, 64, kernel_size=1)
+        self.conv_out = nn.Conv1d(64, 3, kernel_size=1)
+
+    def forward(self, coarse, feat_g, noise):
+        y = self.conv_x1(self.relu(self.conv_x(coarse)))  # B, C, N
+        feat_g = self.conv_1(self.relu(self.conv_11(feat_g)))  # B, C, N
+        y0 = torch.cat([y, feat_g.repeat(1, 1, y.shape[-1])], dim=1)
+        z = self.conv_z1(self.relu(self.conv_z(noise)))  # B, C, N
+
+        y0 = self.sfa0(y0)
+        z1, _ = self.gdp2(y0, z, noise)
+        z2 = self.sfa3(self.sfa2(z1))
+
+        x = self.conv_out(self.relu(self.conv_out1(z2)))
+        return x + noise
 
 
 class PointGenerator(nn.Module):
@@ -274,3 +379,35 @@ class Model(nn.Module):
                 'cd_t_coarse': cd_t_coarse, 'cd_p_coarse': cd_p_coarse,
                 'cd_p': cd_p, 'cd_t': cd_t
             }
+
+
+def train_step(data, net, do_summary_string):
+    _, inputs, gt = data
+
+    inputs = inputs.float().cuda()
+    gt = gt.float().cuda()
+    inputs = inputs.transpose(2, 1).contiguous()
+
+    loss1, loss2, loss3, net_loss = net(inputs, gt)
+
+    summary_string = None
+    if do_summary_string:
+        summary_string = (
+            f' fine1_loss {loss1.mean().item()}'
+            f' fine_loss {loss2.mean().item()}'
+            f' coarse_loss {loss3.mean().item()}'
+            f' total_loss: {net_loss.mean().item()}'
+        )
+
+    return net_loss, summary_string
+
+
+def val_step(data, net):
+    label, inputs, gt = data
+
+    inputs = inputs.float().cuda()
+    gt = gt.float().cuda()
+    inputs = inputs.transpose(2, 1).contiguous()
+    result_dict = net(inputs, gt, is_training=False)
+
+    return result_dict

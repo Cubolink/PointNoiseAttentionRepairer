@@ -11,25 +11,31 @@ import yaml
 import os
 import sys
 import argparse
-from dataset import C3D_h5, PCN_pcd, GeometricBreaksDataset
+from dataset import C3D_h5, PCN_pcd, GeometricBreaksDataset, GeometricBreaksDatasetNoNoise
 
 
 def train():
     logging.info(str(args))
     metrics = ['cd_p', 'cd_t', 'cd_t_coarse', 'cd_p_coarse']
+    if args.model_name == 'PointAttNB':
+        metrics = ['bce', 'cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
     best_epoch_losses = {m: (0, 0) if m == 'f1' else (0, math.inf) for m in metrics}
     train_loss_meter = AverageValueMeter()
     val_loss_meters = {m: AverageValueMeter() for m in metrics}
 
     if args.dataset == 'pcn':
         dataset = PCN_pcd(args.pcnpath, prefix="train")
-        dataset_test = PCN_pcd(args.pcnpath, prefix="test")
+        dataset_test = PCN_pcd(args.pcnpath, prefix="val")
     elif args.dataset == 'c3d':
         dataset = C3D_h5(args.c3dpath, prefix="train")
         dataset_test = C3D_h5(args.c3dpath, prefix="val")
     elif args.dataset == 'chs':
-        dataset = GeometricBreaksDataset(args.chspath, prefix="train")
-        dataset_test = GeometricBreaksDataset(args.chspath, prefix="val")
+        if args.model_name == 'PointAttN':
+            dataset = GeometricBreaksDatasetNoNoise(args.chspath, prefix="train")
+            dataset_test = GeometricBreaksDatasetNoNoise(args.chspath, prefix="val")
+        else:
+            dataset = GeometricBreaksDataset(args.chspath, prefix="train", use_occ=(args.model_name == 'PointAttNB'))
+            dataset_test = GeometricBreaksDataset(args.chspath, prefix="val", use_occ=(args.model_name == 'PointAttNB'))
     else:
         raise ValueError('dataset does not exist')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size,
@@ -46,8 +52,10 @@ def train():
     logging.info('Random Seed: %d' % seed)
     random.seed(seed)
     torch.manual_seed(seed)
-    
+
     model_module = importlib.import_module('.%s' % args.model_name, 'models')
+    train_step = model_module.train_step
+    val_step = model_module.val_step
     net = torch.nn.DataParallel(model_module.Model(args))
     net.cuda()
     if hasattr(model_module, 'weights_init'):
@@ -95,41 +103,28 @@ def train():
     
         for i, data in enumerate(dataloader, 0):
             optimizer.zero_grad()
-    
-            _, inputs, gt = data
-            # mean_feature = None
-    
-            inputs = inputs.float().cuda()
-            gt = gt.float().cuda()
-            inputs = inputs.transpose(2, 1).contiguous()
-    
-            loss1, loss2, loss3, net_loss = net(inputs, gt)
-    
+
+            net_loss, summary_string = train_step(data, net, i % args.step_interval_to_print == 0)
+
             train_loss_meter.update(net_loss.mean().item())
-    
             net_loss.backward(torch.squeeze(torch.ones(torch.cuda.device_count())).cuda())
-    
             optimizer.step()
-    
+
             if i % args.step_interval_to_print == 0:
-                logging.info(
-                    exp_name + f' train [{epoch}: {i}/{len(self.dataset) / args.batch_size}]  loss_type: {args.loss},'
-                               f' fine1_loss: {loss1.mean().item()}'
-                               f' fine_loss: {loss2.mean().item()}'
-                               f' coarse_loss: {loss3.mean().item()}'
-                               f' total_loss: {net_loss.mean().item()}'
-                               f' lr: {lr}'
-                )
+                logging.info(exp_name + f' train [{epoch}: {i}/{len(dataset)/args.batch_size}] loss_type: {args.loss},'
+                                        f' {summary_string}'
+                                        f' lr: {lr}'
+                             )
     
         if epoch % args.epoch_interval_to_save == 0:
             save_model('%s/network.pth' % log_dir, net)
             logging.info("Saving net...")
     
         if epoch % args.epoch_interval_to_val == 0 or epoch == args.nepoch - 1:
-            val(net, epoch, val_loss_meters, dataloader_test, best_epoch_losses)
+            val(net, epoch, val_loss_meters, dataloader_test, best_epoch_losses, val_step)
 
 
-def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses):
+def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses, val_step):
     logging.info('Testing...')
     for v in val_loss_meters.values():
         v.reset()
@@ -137,14 +132,7 @@ def val(net, curr_epoch_num, val_loss_meters, dataloader_test, best_epoch_losses
 
     with torch.no_grad():
         for i, data in enumerate(dataloader_test):
-            label, inputs, gt = data
-            # mean_feature = None
-    
-            inputs = inputs.float().cuda()
-            gt = gt.float().cuda()
-            inputs = inputs.transpose(2, 1).contiguous()
-            # result_dict = net(inputs, gt, is_training=False, mean_feature=mean_feature)
-            result_dict = net(inputs, gt, is_training=False)
+            result_dict = val_step(data, net)
             for k, v in val_loss_meters.items():
                 v.update(result_dict[k].mean().item())
     

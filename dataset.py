@@ -12,6 +12,24 @@ import transforms3d
 import random
 from tensorpack import dataflow
 
+from scipy.spatial.distance import cdist
+
+
+def resample_pcd(pcd, n):
+    """
+    Randomly samples n points from a point cloud, repeating some as needed to reach n.
+    Args:
+        pcd: point cloud
+        n: number of sampled points
+
+    Returns: A point cloud with n points, and the indices used from the original pcd.
+    """
+    pcd_n = pcd.shape[0]
+    idx = np.random.permutation(pcd_n)
+    if idx.shape[0] < n:
+        idx = np.concatenate([idx, np.random.randint(pcd_n, size=n - pcd_n)])
+    return pcd[idx[:n]], idx[:n]
+
 
 logger = logging.getLogger(__name__)
 
@@ -352,10 +370,10 @@ class GeometricBreaksDataset:
             restoration_points = break_symmetry(restoration_points_dict['points'])
             complete_points = break_symmetry(complete_points_dict['points'])
 
-            return category, broken_points, complete_points
+            return category, broken_points, restoration_points, complete_points
 
     def __init__(self, dataset_folder, prefix,
-                 categories=None, no_except=True, transform=None, cfg=None):
+                 categories=None, no_except=True, transform=None, cfg=None, use_occ=False):
         ''' Initialization of the the 3D shape dataset.
 
         Args:
@@ -366,6 +384,7 @@ class GeometricBreaksDataset:
             no_except (bool): no exception
             transform (callable): transformation applied to data points
             cfg (yaml): config file
+            use_occ: whether to give occupancy values as ground truth or points
         '''
         # Get split
         splits = {
@@ -382,6 +401,7 @@ class GeometricBreaksDataset:
         self.no_except = no_except
         self.transform = transform
         self.cfg = cfg
+        self.use_occ = use_occ
         self.sample = 1
 
         # If categories is None, use all subfolders
@@ -424,6 +444,16 @@ class GeometricBreaksDataset:
     def __len__(self):
         return len(self.models)
 
+    @staticmethod
+    def _infer_occ(noise, gt):
+        # roughly estimate distance between points in point cloud
+        dist_sq = cdist(gt, gt, 'sqeuclidean')
+        np.fill_diagonal(dist_sq, np.inf)
+        in_dist = np.max(np.min(dist_sq, axis=0))
+
+        mask = (cdist(noise, gt, 'sqeuclidean').min(axis=1) <= in_dist)
+        return mask
+
     def __getitem__(self, idx):
         ''' Returns an item of the dataset.
 
@@ -436,7 +466,7 @@ class GeometricBreaksDataset:
         model_path = os.path.join(self.dataset_folder, category, model)
 
         try:
-            label, partial, complete = self.field.load(model_path, idx, category)
+            label, partial, restoration, complete = self.field.load(model_path, idx, category)
         except Exception:
             if self.no_except:
                 logger.warn(
@@ -447,20 +477,45 @@ class GeometricBreaksDataset:
             else:
                 raise
 
-        # TODO: they use permutation, it seems to be a better method
         # SubsampleAll
-        partial_sample_indices = np.random.randint(partial.shape[0], size=2048)
-        complete_sample_indices = np.random.randint(complete.shape[0], size=2048)
-        partial = partial[partial_sample_indices]
-        complete = complete[complete_sample_indices]
+        partial = partial[np.random.permutation(partial.shape[0])][:2048]
+        restoration = restoration[np.random.permutation(restoration.shape[0])][:2048]
+        complete = complete[np.random.permutation(complete.shape[0])[:2048]]
+        noise = np.random.uniform(-1 / 2, 1 / 2, size=(2048, partial.shape[1]))
 
-        complete = torch.from_numpy(complete)
+        if not self.use_occ or self.prefix == 'test':
+            occ = None
+        else:
+            occ = self._infer_occ(noise, complete)
+            occ = torch.from_numpy(occ)
+
         partial = torch.from_numpy(partial)
+        restoration = torch.from_numpy(restoration)
+        complete = torch.from_numpy(complete)
+        noise = torch.from_numpy(noise)
 
         if self.prefix == 'test':
-            return label, partial, complete, model
+            return label, partial, noise, complete, restoration, model
+        elif self.use_occ:
+            return label, partial, noise, occ, restoration
         else:
-            return label, partial, complete
+            return label, partial, noise, complete, restoration
+
+
+class GeometricBreaksDatasetNoNoise(GeometricBreaksDataset):
+    """
+    The same GeometricBreaksDataset, but PointAttN-compatible (it doesn't return noise)
+    """
+    def __init__(self, dataset_folder, prefix, categories=None, no_except=True, transform=None, cfg=None):
+        super().__init__(dataset_folder, prefix, categories, no_except, transform, cfg, use_occ=False)
+
+    def __getitem__(self, idx):
+        if self.prefix == 'test':
+            label, partial, noise, complete, restoration, model = super().__getitem__(idx)
+            return label, partial, complete, model
+
+        label, partial, noise, complete, restoration = super().__getitem__(idx)
+        return label, partial, complete
 
 
 if __name__ == '__main__':
@@ -469,7 +524,3 @@ if __name__ == '__main__':
                                              shuffle=True, num_workers=0)
     for idx, data in enumerate(dataloader, 0):
         print(data.shape)
-
-
-
-
