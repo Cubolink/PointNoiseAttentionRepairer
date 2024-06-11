@@ -69,22 +69,28 @@ def test():
 
                     if args.model_name == 'PointAttNB':
                         mask = (result_dict['out2'][j] < 1).all(axis=1)
-                        save_obj(result_dict['out2'][j][mask], path)
+                        save_obj(
+                            result_dict['out2'][j][mask],
+                            path.replace('.obj', '_out.obj')
+                        )
                         save_obj(
                             torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j][mask]], dim=0),
-                            path.replace('.obj', '+inputs.obj')
+                            path.replace('.obj', '_out+inputs.obj')
                         )
                     else:
-                        save_obj(result_dict['out2'][j], path)
+                        save_obj(
+                            result_dict['out2'][j],
+                            path.replace('.obj', '_out.obj')
+                        )
                         save_obj(
                             torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j]]),
-                            path.replace('.obj', '+inputs.obj')
+                            path.replace('.obj', '_out+inputs.obj')
                         )
                     save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
                     save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
                     save_obj(
                         torch.cat([inputs[j].transpose(0, 1), result_dict['out1'][j]], dim=0),
-                        path.replace('.obj', 'coarse+inputs.obj'))
+                        path.replace('.obj', '_coarse+inputs.obj'))
 
                     # save_obj(gt[j], path.replace('.obj', '_gt.obj'))
 
