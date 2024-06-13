@@ -11,7 +11,13 @@ import yaml
 import os
 import sys
 import argparse
-from dataset import C3D_h5, PCN_pcd, GeometricBreaksDataset, GeometricBreaksDatasetNoNoise
+from dataset import (
+    C3D_h5,
+    PCN_pcd,
+    GeometricBreaksDatasetNoNoise,
+    GeometricBreaksDatasetWithNoise,
+    GeometricBreaksDatasetWithNoiseOccupancy
+)
 
 
 def train():
@@ -30,12 +36,15 @@ def train():
         dataset = C3D_h5(args.c3dpath, prefix="train")
         dataset_test = C3D_h5(args.c3dpath, prefix="val")
     elif args.dataset == 'chs':
-        if args.model_name == 'PointAttN':
+        if args.model_name == 'PointAttNA':
+            dataset = GeometricBreaksDatasetWithNoise(args.chspath, prefix="train")
+            dataset_test = GeometricBreaksDatasetWithNoise(args.chspath, prefix="val")
+        elif args.model_name == 'PointAttNB':
+            dataset = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="train")
+            dataset_test = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="val")
+        else:
             dataset = GeometricBreaksDatasetNoNoise(args.chspath, prefix="train")
             dataset_test = GeometricBreaksDatasetNoNoise(args.chspath, prefix="val")
-        else:
-            dataset = GeometricBreaksDataset(args.chspath, prefix="train", use_occ=(args.model_name == 'PointAttNB'))
-            dataset_test = GeometricBreaksDataset(args.chspath, prefix="val", use_occ=(args.model_name == 'PointAttNB'))
     else:
         raise ValueError('dataset does not exist')
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=args.batch_size,
