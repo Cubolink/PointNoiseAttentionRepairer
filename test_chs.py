@@ -7,14 +7,19 @@ import munch
 import yaml
 from utils.train_utils import *
 from utils.test_utils import *
-from dataset import GeometricBreaksDataset, GeometricBreaksDatasetNoNoise
+from dataset import (
+    GeometricBreaksDatasetNoNoise, GeometricBreaksDatasetWithNoise, GeometricBreaksDatasetWithNoiseOccupancy
+)
 
 
 def test():
-    if args.model_name == 'PointAttN':
-        dataset_test = GeometricBreaksDatasetNoNoise(args.chspath, prefix="test")
+    if args.model_name == 'PointAttNA':
+        dataset_test = GeometricBreaksDatasetWithNoise(args.chspath, prefix="test")
+    elif args.model_name == 'PointAttNB':
+        dataset_test = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="test")
     else:
-        dataset_test = GeometricBreaksDataset(args.chspath, prefix="test")
+        dataset_test = GeometricBreaksDatasetNoNoise(args.chspath, prefix="test")
+
     dataloader_test = torch.utils.data.DataLoader(dataset_test, batch_size=args.batch_size,
                                                   shuffle=False, num_workers=int(args.workers))
     dataset_length = len(dataset_test)
@@ -69,22 +74,28 @@ def test():
 
                     if args.model_name == 'PointAttNB':
                         mask = (result_dict['out2'][j] < 1).all(axis=1)
-                        save_obj(result_dict['out2'][j][mask], path)
+                        save_obj(
+                            result_dict['out2'][j][mask],
+                            path.replace('.obj', '_out.obj')
+                        )
                         save_obj(
                             torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j][mask]], dim=0),
-                            path.replace('.obj', '+inputs.obj')
+                            path.replace('.obj', '_out+inputs.obj')
                         )
                     else:
-                        save_obj(result_dict['out2'][j], path)
+                        save_obj(
+                            result_dict['out2'][j],
+                            path.replace('.obj', '_out.obj')
+                        )
                         save_obj(
                             torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j]]),
-                            path.replace('.obj', '+inputs.obj')
+                            path.replace('.obj', '_out+inputs.obj')
                         )
                     save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
                     save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
                     save_obj(
                         torch.cat([inputs[j].transpose(0, 1), result_dict['out1'][j]], dim=0),
-                        path.replace('.obj', 'coarse+inputs.obj'))
+                        path.replace('.obj', '_coarse+inputs.obj'))
 
                     # save_obj(gt[j], path.replace('.obj', '_gt.obj'))
 
