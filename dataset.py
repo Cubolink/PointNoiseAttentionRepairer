@@ -396,7 +396,9 @@ class GeometricBreaksDatasetBase:
         # Attributes
         self.dataset_folder = dataset_folder
         self.prefix = prefix
-        self.field = self.BrokenPointsField('pointcloud.npz', unpackbits=False, multi_files=-1)
+        self.field = self.BrokenPointsField('pointcloud.npz', unpackbits=False,
+                                            multi_files=1 if prefix=='test' else -1  # when testing, use only the first break
+                                            )
         self.no_except = no_except
         self.transform = transform
         self.cfg = cfg
