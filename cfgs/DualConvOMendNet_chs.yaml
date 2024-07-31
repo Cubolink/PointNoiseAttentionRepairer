@@ -1,0 +1,54 @@
+batch_size: 32
+workers: 2
+nepoch: 3000
+model_name: DualConvOMendNet
+load_model: False # ./log/DualConvOMendNet_cd_debug_chs/network.pth
+start_epoch: 0
+num_points: 2048
+work_dir: log/
+flag: debug
+loss: cd #cd
+manual_seed: 1748  # null # 1748
+step_interval_to_print: 500
+epoch_interval_to_save: 50
+epoch_interval_to_val: 100
+
+lr: 0.0001
+lr_decay: False
+#lr_decay_interval: 40
+#lr_decay_rate: 0.7
+#lr_step_decay_epochs: null
+#lr_step_decay_rates: null
+#lr_clip: 1.e-6
+optimizer: Adam
+weight_decay: 0  # default: 0
+betas: 0.9, 0.999  # default: 0.9, 0.999
+
+dualconvomendnet_args:
+  encoder: pointnet_local_pool
+  encoder_kwargs:
+    hidden_dim: 32
+    plane_type: [ 'grid' ]
+    plane_resolution: 64
+    grid_resolution: 32
+    unet3d: True
+    unet3d_kwargs:
+      num_levels: 3
+      f_maps: 32
+      in_channels: 32
+      out_channels: 32
+  decoder: simple_local
+  decoder_kwargs:
+    sample_mode: bilinear # bilinear / nearest
+    hidden_size: 32
+  attention_kwargs:
+    num_heads: 4
+  c_dim: 32
+
+device: '0'
+dataset: 'chs'
+pcnpath: datasets/ShapeNetCompletion
+c3dpath: datasets/shapenet
+chspath: datasets/datasetCHSharp
+# test
+save_vis: True
