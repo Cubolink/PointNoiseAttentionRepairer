@@ -8,7 +8,10 @@ import yaml
 from utils.train_utils import *
 from utils.test_utils import *
 from dataset import (
-    GeometricBreaksDatasetNoNoise, GeometricBreaksDatasetWithNoise, GeometricBreaksDatasetWithNoiseOccupancy
+    GeometricBreaksDatasetNoNoise,
+    GeometricBreaksDatasetWithNoise,
+    GeometricBreaksDatasetWithNoiseOccupancy,
+    GeometricBreaksDatasetWithMixedNoiseOccupancy
 )
 from matplotlib.pyplot import get_cmap
 import trimesh
@@ -19,7 +22,7 @@ def test():
     elif args.model_name == 'PointAttNB':
         dataset_test = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="test")
     elif args.model_name == 'DualConvOMendNet':
-        dataset_test = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="test")
+        dataset_test = GeometricBreaksDatasetWithMixedNoiseOccupancy(args.chspath, prefix="test")
     else:
         dataset_test = GeometricBreaksDatasetNoNoise(args.chspath, prefix="test")
 

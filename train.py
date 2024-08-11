@@ -16,7 +16,8 @@ from dataset import (
     PCN_pcd,
     GeometricBreaksDatasetNoNoise,
     GeometricBreaksDatasetWithNoise,
-    GeometricBreaksDatasetWithNoiseOccupancy
+    GeometricBreaksDatasetWithNoiseOccupancy,
+    GeometricBreaksDatasetWithMixedNoiseOccupancy
 )
 
 
@@ -45,8 +46,8 @@ def train():
             dataset = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="train")
             dataset_test = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="val")
         elif args.model_name == 'DualConvOMendNet':
-            dataset = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="train")
-            dataset_test = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="val")
+            dataset = GeometricBreaksDatasetWithMixedNoiseOccupancy(args.chspath, prefix="train")
+            dataset_test = GeometricBreaksDatasetWithMixedNoiseOccupancy(args.chspath, prefix="val")
         else:
             dataset = GeometricBreaksDatasetNoNoise(args.chspath, prefix="train")
             dataset_test = GeometricBreaksDatasetNoNoise(args.chspath, prefix="val")
