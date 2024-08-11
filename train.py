@@ -16,7 +16,8 @@ from dataset import (
     PCN_pcd,
     GeometricBreaksDatasetNoNoise,
     GeometricBreaksDatasetWithNoise,
-    GeometricBreaksDatasetWithNoiseOccupancy
+    GeometricBreaksDatasetWithNoiseOccupancy,
+    GeometricBreaksDatasetWithMixedNoiseOccupancy
 )
 
 
@@ -25,6 +26,8 @@ def train():
     metrics = ['cd_p', 'cd_t', 'cd_t_coarse', 'cd_p_coarse']
     if args.model_name == 'PointAttNB':
         metrics = ['bce', 'cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
+    if args.model_name == 'DualConvOMendNet':
+        metrics = ['bce', 'cd_p', 'cd_t']
     best_epoch_losses = {m: (0, 0) if m == 'f1' else (0, math.inf) for m in metrics}
     train_loss_meter = AverageValueMeter()
     val_loss_meters = {m: AverageValueMeter() for m in metrics}
@@ -42,6 +45,9 @@ def train():
         elif args.model_name == 'PointAttNB':
             dataset = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="train")
             dataset_test = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="val")
+        elif args.model_name == 'DualConvOMendNet':
+            dataset = GeometricBreaksDatasetWithMixedNoiseOccupancy(args.chspath, prefix="train")
+            dataset_test = GeometricBreaksDatasetWithMixedNoiseOccupancy(args.chspath, prefix="val")
         else:
             dataset = GeometricBreaksDatasetNoNoise(args.chspath, prefix="train")
             dataset_test = GeometricBreaksDatasetNoNoise(args.chspath, prefix="val")
