@@ -507,8 +507,8 @@ class GeometricBreaksDatasetWithMixedNoiseOccupancy(GeometricBreaksDatasetBase):
             # Now that we have m and n, we have to scalate them down so that m + n == points.shape[0]
             s = points.shape[0] / (m + n)
             # I could do round() instead of floor and ceil, but I don't want to trust a (0.49... + 0.49... == 1) case
-            m = int(np.floor(m * s))
-            n = int(np.ceil(n * s))
+            m = int(np.ceil(m * s))
+            n = points.shape[0] - m  # int(np.floor(n * s))
         else:
             # m + n == points.shape[0]
             m = points.shape[0] // 4
