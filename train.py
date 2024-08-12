@@ -104,7 +104,6 @@ def train():
         train_loss_meter.reset()
         net.module.train()
 
-
         if args.lr_decay:
             if args.lr_decay_interval:
                 if epoch > 0 and epoch % args.lr_decay_interval == 0:

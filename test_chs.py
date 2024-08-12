@@ -83,7 +83,10 @@ def test():
                         os.makedirs(path)
                     path = os.path.join(path, str(obj[j]) + '.obj')
 
+                    save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
+                    save_obj(complete_gt_cpu[j], path.replace('.obj', '_complete-gt.obj'))
                     if args.model_name == 'PointAttNB' or args.model_name == 'DualConvOMendNet':
+                        # the output comes already filtered
                         mask = (result_dict['out2'][j] < 1).all(axis=1)
                         save_obj(
                             result_dict['out2'][j][mask],
@@ -93,6 +96,7 @@ def test():
                             torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j][mask]], dim=0),
                             path.replace('.obj', '_out+inputs.obj')
                         )
+                        # color noise using predicted occupancy values
                         cmap = get_cmap('gray')
                         trimesh.PointCloud(
                             noise[j].transpose(0, 1).cpu().numpy(),
@@ -109,10 +113,8 @@ def test():
                             torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j]]),
                             path.replace('.obj', '_out+inputs.obj')
                         )
-
                     if result_dict['out1'] is not None:
                         save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
-                        save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
                         save_obj(
                             torch.cat([inputs[j].transpose(0, 1), result_dict['out1'][j]], dim=0),
                             path.replace('.obj', '_coarse+inputs.obj'))
