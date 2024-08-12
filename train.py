@@ -92,11 +92,12 @@ def train():
         betas = (float(betas[0].strip()), float(betas[1].strip()))
         optimizer = optimizer(net.module.parameters(), lr=lr, weight_decay=args.weight_decay, betas=betas)
 
-
+    loss_history = LossHistory(['net_loss'], os.path.join(log_dir, 'loss.json'))
     if args.load_model:
         ckpt = torch.load(args.load_model)
         net.module.load_state_dict(ckpt['net_state_dict'])
         logging.info("%s's previous weights loaded." % args.model_name)
+        loss_history.load(os.path.join(log_dir, 'loss.json'))
     
     for epoch in range(args.start_epoch, args.nepoch):
     
@@ -125,6 +126,7 @@ def train():
             net_loss.backward(torch.squeeze(torch.ones(torch.cuda.device_count())).cuda())
             optimizer.step()
 
+            loss_history.update(epoch, i, {'net_loss': net_loss.mean().item()})
             if i % args.step_interval_to_print == 0:
                 logging.info(exp_name + f' train [{epoch}: {i}/{len(dataset)/args.batch_size}] loss_type: {args.loss},'
                                         f' {summary_string}'
@@ -133,6 +135,7 @@ def train():
     
         if epoch % args.epoch_interval_to_save == 0:
             save_model('%s/network.pth' % log_dir, net)
+            loss_history.save()
             logging.info("Saving net...")
     
         if epoch % args.epoch_interval_to_val == 0 or epoch == args.nepoch - 1:
