@@ -11,6 +11,7 @@ import math
 import transforms3d
 import random
 from tensorpack import dataflow
+import trimesh
 
 from scipy.spatial.distance import cdist
 
@@ -32,6 +33,83 @@ def resample_pcd(pcd, n):
 
 
 logger = logging.getLogger(__name__)
+
+
+class SimpleDataset(data.Dataset):
+    def __init__(self, data_folder, file_extensions=None):
+        if file_extensions is None:
+            file_extensions = ['.off']
+        self.file_path = data_folder
+
+        # Get all valid files (with file extensions in the list)
+        self.models = []
+        for root, _, files in os.walk(data_folder):
+            for file in files:
+                if any(file.endswith(ext) for ext in file_extensions):
+                    self.models.append(os.path.join(root, file))
+
+
+    def __load_obj_file(self, file_path):
+        scene = trimesh.load(file_path)
+
+        # Extract vertices from all geometries in the scene
+        points = []
+        if isinstance(scene, trimesh.Scene):
+            for geom in scene.geometry.values():
+                points.extend(geom.vertices)
+        else:
+            points = scene.vertices
+        return points
+
+    def __load_ply_file(self, file_path):
+        mesh = trimesh.load(file_path)
+        return mesh.vertices
+
+    def __load_off_file(self, file_path):
+        mesh = trimesh.load(file_path)
+        return mesh.vertices
+
+    def __load_file(self, file_path):
+        _, ext = os.path.splitext(file_path)
+        if ext == '.ply':
+            return self.__load_ply_file(file_path)
+        elif ext == '.obj':
+            return self.__load_obj_file(file_path)
+        elif ext == '.off':
+            return self.__load_off_file(file_path)
+        else:
+            raise ValueError(f"Unsupported file extension: {ext}")
+
+    def __len__(self):
+        return len(self.models)
+
+    def __getitem__(self, idx):
+        model = self.models[idx]
+        points = self.__load_file(model)
+
+        # scale points
+        mins = np.amin(points, axis=0)
+        maxs = np.amax(points, axis=0)
+        center = (mins + maxs) / 2.
+        scale = np.amax(maxs - mins)
+
+        points = ((points - center) / scale).astype(np.float32)
+
+        # Subsample
+        points = points[np.random.permutation(points.shape[0])][:2048]
+        points = torch.from_numpy(points)
+
+        return points, model
+
+
+class SimpleDatasetWithNoise(SimpleDataset):
+    def __getitem__(self, idx):
+        points, model = super().__getitem__(idx)
+
+        noise = np.random.uniform(-1 / 2, 1 / 2, size=(2048, points.shape[1]))
+        noise = torch.from_numpy(noise)
+
+        return points, noise, model
 
 
 class PCN_pcd(data.Dataset):

@@ -371,6 +371,11 @@ class Model(nn.Module):
 
             return loss3, loss2, loss1, total_train_loss
         else:
+            if gt is None:
+                return {
+                    'out1': coarse,
+                    'out2': fine1,
+                }
             cd_p, cd_t = calc_cd(fine1, gt)
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt)
 

@@ -32,6 +32,11 @@ class Model(nn.Module):
             total_train_loss = loss1.mean() + loss3.mean()
             return loss3, loss1, total_train_loss
         else:
+            if gt is None:
+                return {
+                    'out1': coarse,
+                    'out2': unnoised
+                }
             cd_p, cd_t = calc_cd(unnoised, gt)
             cd_p_coarse, cd_t_coarse = calc_cd(coarse, gt_coarse)
 
