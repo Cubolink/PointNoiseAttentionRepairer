@@ -1,13 +1,38 @@
-# PointAttN
+# Project Phoenix-CH: Pointcloud Healing and Object Estimation through cross-attentIon eXploration.
 
-News：Our paper has been accepted by AAAI-2024.
+This repo started as a fork of [PointAttN](https://github.com/ohhhyeahhh/PointAttN). Please refer to their repo for the original implementation.
+There are some implementations taken from [Convolutional Occupancy Networks](https://pengsongyou.github.io/conv_onet) too.
+Please, consider visiting their original pages.
 
-## 1. Environment setup
+## 0. About this work
+
+
+In this project, we explore and develop some AI models to restore incomplete point clouds of archaeological artifacts,
+combining the strengths of implicit representations and point-cloud-based approaches.
+We use [PointAttN](https://github.com/ohhhyeahhh/PointAttN), and two custom variations. 
+
+### Motivation
+
+Archaeology seeks to understand human history through ancient artifacts,
+but these objects often suffer from deterioration or incompleteness.
+Digital models obtained through scanning frequently exhibit defects, such as missing geometry due to occlusion.
+
+To address these challenges, some researches have explored reconstruction using implicit representations
+**([DeepMend](dsfs), [ConvONet](https://pengsongyou.github.io/conv_onet))**, although these methods often require watertight meshes. Alternatively,
+**[PointAttN](https://github.com/ohhhyeahhh/PointAttN)** and **[DRDAP](https://github.com/ivansipiran/Data-driven-cultural-heritage)**
+focused on directly working with point clouds to repair objects. Notably, **DRDAP** and **DeepMend**
+specifically explored generating only the missing geometry rather than reconstructing the entire object,
+something really useful for repairing archaeological objects.
+
+
+## 1. Environment setup **(WIP)**
 
 ### Install related libraries
 
-This code has been tested on Ubuntu 20.04, python 3.8.12, torch 1.9.0 and cuda 11.2. Please install related libraries before running this code:
+This code has been tested on Ubuntu 20.04, python 3.10.14, torch 1.13.1 with cuda 11.7, and using CUDA 12.2 in the machine.
+Please install related libraries before running this code:
 
+**WIP: requirements.txt is outdated :c**
 ```
 pip install -r requirements.txt
 ```
@@ -25,43 +50,27 @@ python setup.py install
 
 ### Prepare training datasets
 
-Download the datasets:
-
-+ [PCN(raw data)](https://drive.google.com/drive/folders/1P_W1tz5Q4ZLapUifuOE4rFAZp6L1XTJz)
-+ [PCN(processed data)](https://gateway.infinitescript.com/?fileName=ShapeNetCompletion)
-+ [Completion3D](https://completion3d.stanford.edu/)
+Aiming for repairing cultural heritage objects, we used this [Dataset for precolombian reconstruction](https://github.com/PJaramilloV/Precolombian-Dataset.git).
+In this work, I called it **CHS** instead, standing for *Cultural Heritage Sharp*.
 
 ### Train a model
 
-To train the PointAttN model, modify the dataset path in `cfgs/PointAttN.yaml `, run:
+To train the PointAttN, PointAttNA or PointAttNB models, modify the dataset path in `cfgs/PointAttNX.yaml `, run:
 
 ```
-python train.py -c PointAttN.yaml
+python train.py -c PointAttNX.yaml
 ```
 
-## 3. Test
+## 3. Test **(WIP)**
 
-### Pretrained models
-
-The pretrained models on Completion3D and PCN benchmark are available as follows:
-
-|   dataset    | performance |                          model link                          |
-| :----------: | :---------: | :----------------------------------------------------------: |
-| Completion3D |  CD = 6.63  | [[BaiDuYun](https://pan.baidu.com/s/17-BZr3QvHYjEVMjPuXHXTg)] (code：nf0m)[[GoogleDrive](https://drive.google.com/drive/folders/1uw0oJ731uLjDpZ82Gp7ILisjeOrNdiHK?usp=sharing)] |
-|     PCN      |  CD = 6.86  | [[BaiDuYun](https://pan.baidu.com/s/187GjKO2qEQFWlroG1Mma2g)] (code：kmju)[[GoogleDrive](https://drive.google.com/drive/folders/1uw0oJ731uLjDpZ82Gp7ILisjeOrNdiHK?usp=sharing)] |
+### Pretrained models **(WIP)**
 
 ### Test for paper result
 
-To test PointAttN on PCN benchmark, download  the pretrained model and put it into `PointAttN_cd_debug_pcn `directory, run:
+To test any PointAttN variation on CHS benchmark, download  the pretrained model and put it into `PointAttN_cd_debug_chs `directory, run:
 
 ```
-python test_pcn.py -c PointAttN.yaml
-```
-
-To test PointAttN on Completion3D benchmark, download  the pretrained model and put it into `PointAttN_cd_debug_c3d `directory, run:
-
-```
-python test_c3d.py -c PointAttN.yaml
+python test_chs.py -c PointAttNX.yaml
 ```
 
 ## 4. Acknowledgement
@@ -71,9 +80,14 @@ python test_c3d.py -c PointAttN.yaml
 
 2. Some of the code of this project is borrowed from [VRC-Net](https://github.com/paul007pl/MVP_Benchmark)  
 
+3. A lot of the code of this project is taken from [PointAttN](https://github.com/ohhhyeahhh/PointAttN), since this repo
+stared as a fork.
+
+4. There is also code from [Convolutional Occupancy Networks](https://pengsongyou.github.io/conv_onet) too.
+
 ## 5. Cite this work
 
-If you use PointAttN in your work, please cite our paper:
+If you use PointAttN in your work, please cite the original paper:
 
 ```
 @article{Wang_Cui_Guo_Li_Liu_Shen_2024,
