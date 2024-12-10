@@ -103,3 +103,4 @@ If you use PointAttN in your work, please cite the original paper:
 }
 ```
 
+![Infographic](Poster_2024-11.png "Poster for a Workshop in Computer Vision done in 2024-11")
