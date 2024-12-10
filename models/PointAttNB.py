@@ -21,7 +21,7 @@ class Model(nn.Module):
         return filtered
 
     def forward(self, x, noise, gt_coarse=None, gt=None, is_training=True):
-        gt_is_occ = (len(gt.shape) == 2)  # should be true on training
+        gt_is_occ = (len(gt.shape) == 2) if gt is not None else False  # should be true on training
 
         feat_g = self.feature_extractor(x)
         seeds, coarse = self.seed_generator(feat_g, x)
@@ -48,6 +48,12 @@ class Model(nn.Module):
 
             return loss3, loss2, loss1, total_train_loss
         else:
+            if gt is None:
+                return {
+                    'out1': coarse,
+                    'out2': filtered_list,
+                    'occ': torch.sigmoid(logits)
+                }
             if gt_is_occ:
                 bce = nn.functional.binary_cross_entropy_with_logits(logits, gt, reduction='none').mean(axis=1)
                 cd_p, cd_t = calc_cd(filtered_list, filtered_list_gt)

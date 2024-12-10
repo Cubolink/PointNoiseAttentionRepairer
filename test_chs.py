@@ -8,15 +8,21 @@ import yaml
 from utils.train_utils import *
 from utils.test_utils import *
 from dataset import (
-    GeometricBreaksDatasetNoNoise, GeometricBreaksDatasetWithNoise, GeometricBreaksDatasetWithNoiseOccupancy
+    GeometricBreaksDatasetNoNoise,
+    GeometricBreaksDatasetWithNoise,
+    GeometricBreaksDatasetWithNoiseOccupancy,
+    GeometricBreaksDatasetWithMixedNoiseOccupancy
 )
-
+from matplotlib.pyplot import get_cmap
+import trimesh
 
 def test():
     if args.model_name == 'PointAttNA':
         dataset_test = GeometricBreaksDatasetWithNoise(args.chspath, prefix="test")
     elif args.model_name == 'PointAttNB':
         dataset_test = GeometricBreaksDatasetWithNoiseOccupancy(args.chspath, prefix="test")
+    elif args.model_name == 'DualConvOMendNet':
+        dataset_test = GeometricBreaksDatasetWithMixedNoiseOccupancy(args.chspath, prefix="test")
     else:
         dataset_test = GeometricBreaksDatasetNoNoise(args.chspath, prefix="test")
 
@@ -34,6 +40,8 @@ def test():
     net.eval()
 
     metrics = ['cd_t', 'cd_p', 'cd_t_coarse', 'cd_p_coarse']
+    if args.model_name == 'DualConvOMendNet':
+        metrics = ['cd_t', 'cd_p']
     test_loss_meters = {m: AverageValueMeter() for m in metrics}
     test_loss_cat = torch.zeros([len(dataset_test.label_map), len(metrics)], dtype=torch.float32).cuda()
     cat_num = torch.ones([len(dataset_test.label_map), 1], dtype=torch.float32).cuda() * 150
@@ -54,7 +62,10 @@ def test():
                 noise = noise_cpu.float().cuda()
                 inputs = inputs.transpose(2, 1).contiguous()
                 noise = noise.transpose(2, 1).contiguous()
-                result_dict = net(inputs, noise, gt_coarse=restoration_gt_cpu, gt=complete_gt_cpu, is_training=False)
+                if args.model_name == 'DualConvOMendNet':
+                    result_dict = net(None, inputs, noise, None, gt_coarse=restoration_gt_cpu, gt=complete_gt_cpu, is_training=False)
+                else:
+                    result_dict = net(inputs, noise, gt_coarse=restoration_gt_cpu, gt=complete_gt_cpu, is_training=False)
             for k, v in test_loss_meters.items():
                 v.update(result_dict[k].mean().item())
 
@@ -72,7 +83,10 @@ def test():
                         os.makedirs(path)
                     path = os.path.join(path, str(obj[j]) + '.obj')
 
-                    if args.model_name == 'PointAttNB':
+                    save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
+                    save_obj(complete_gt_cpu[j], path.replace('.obj', '_complete-gt.obj'))
+                    if args.model_name == 'PointAttNB' or args.model_name == 'DualConvOMendNet':
+                        # the output comes already filtered
                         mask = (result_dict['out2'][j] < 1).all(axis=1)
                         save_obj(
                             result_dict['out2'][j][mask],
@@ -81,6 +95,14 @@ def test():
                         save_obj(
                             torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j][mask]], dim=0),
                             path.replace('.obj', '_out+inputs.obj')
+                        )
+                        # color noise using predicted occupancy values
+                        cmap = get_cmap('gray')
+                        trimesh.PointCloud(
+                            noise[j].transpose(0, 1).cpu().numpy(),
+                            colors=cmap(result_dict['occ'][j].cpu().numpy())
+                        ).export(
+                            path.replace('.obj', '_occ.obj')
                         )
                     else:
                         save_obj(
@@ -91,11 +113,11 @@ def test():
                             torch.cat([inputs[j].transpose(0, 1), result_dict['out2'][j]]),
                             path.replace('.obj', '_out+inputs.obj')
                         )
-                    save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
-                    save_obj(inputs[j].transpose(0, 1), path.replace('.obj', '_inputs.obj'))
-                    save_obj(
-                        torch.cat([inputs[j].transpose(0, 1), result_dict['out1'][j]], dim=0),
-                        path.replace('.obj', '_coarse+inputs.obj'))
+                    if result_dict['out1'] is not None:
+                        save_obj(result_dict['out1'][j], path.replace('.obj', '_coarse.obj'))
+                        save_obj(
+                            torch.cat([inputs[j].transpose(0, 1), result_dict['out1'][j]], dim=0),
+                            path.replace('.obj', '_coarse+inputs.obj'))
 
                     # save_obj(gt[j], path.replace('.obj', '_gt.obj'))
 

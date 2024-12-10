@@ -11,6 +11,7 @@ import math
 import transforms3d
 import random
 from tensorpack import dataflow
+import trimesh
 
 from scipy.spatial.distance import cdist
 
@@ -32,6 +33,83 @@ def resample_pcd(pcd, n):
 
 
 logger = logging.getLogger(__name__)
+
+
+class SimpleDataset(data.Dataset):
+    def __init__(self, data_folder, file_extensions=None):
+        if file_extensions is None:
+            file_extensions = ['.off']
+        self.file_path = data_folder
+
+        # Get all valid files (with file extensions in the list)
+        self.models = []
+        for root, _, files in os.walk(data_folder):
+            for file in files:
+                if any(file.endswith(ext) for ext in file_extensions):
+                    self.models.append(os.path.join(root, file))
+
+
+    def __load_obj_file(self, file_path):
+        scene = trimesh.load(file_path)
+
+        # Extract vertices from all geometries in the scene
+        points = []
+        if isinstance(scene, trimesh.Scene):
+            for geom in scene.geometry.values():
+                points.extend(geom.vertices)
+        else:
+            points = scene.vertices
+        return points
+
+    def __load_ply_file(self, file_path):
+        mesh = trimesh.load(file_path)
+        return mesh.vertices
+
+    def __load_off_file(self, file_path):
+        mesh = trimesh.load(file_path)
+        return mesh.vertices
+
+    def __load_file(self, file_path):
+        _, ext = os.path.splitext(file_path)
+        if ext == '.ply':
+            return self.__load_ply_file(file_path)
+        elif ext == '.obj':
+            return self.__load_obj_file(file_path)
+        elif ext == '.off':
+            return self.__load_off_file(file_path)
+        else:
+            raise ValueError(f"Unsupported file extension: {ext}")
+
+    def __len__(self):
+        return len(self.models)
+
+    def __getitem__(self, idx):
+        model = self.models[idx]
+        points = self.__load_file(model)
+
+        # scale points
+        mins = np.amin(points, axis=0)
+        maxs = np.amax(points, axis=0)
+        center = (mins + maxs) / 2.
+        scale = np.amax(maxs - mins)
+
+        points = ((points - center) / scale).astype(np.float32)
+
+        # Subsample
+        points = points[np.random.permutation(points.shape[0])][:2048]
+        points = torch.from_numpy(points)
+
+        return points, model
+
+
+class SimpleDatasetWithNoise(SimpleDataset):
+    def __getitem__(self, idx):
+        points, model = super().__getitem__(idx)
+
+        noise = np.random.uniform(-1 / 2, 1 / 2, size=(2048, points.shape[1]))
+        noise = torch.from_numpy(noise)
+
+        return points, noise, model
 
 
 class PCN_pcd(data.Dataset):
@@ -396,7 +474,9 @@ class GeometricBreaksDatasetBase:
         # Attributes
         self.dataset_folder = dataset_folder
         self.prefix = prefix
-        self.field = self.BrokenPointsField('pointcloud.npz', unpackbits=False, multi_files=-1)
+        self.field = self.BrokenPointsField('pointcloud.npz', unpackbits=False,
+                                            multi_files=1 if prefix=='test' else -1  # when testing, use only the first break
+                                            )
         self.no_except = no_except
         self.transform = transform
         self.cfg = cfg
@@ -476,6 +556,84 @@ class GeometricBreaksDatasetBase:
         complete = torch.from_numpy(complete)
 
         return label, partial, complete, restoration, model
+
+
+class GeometricBreaksDatasetWithMixedNoiseOccupancy(GeometricBreaksDatasetBase):
+    """
+    Concatenates a subsample of the restoration shape with noise, so the 'noise' is not pure, but mixed with the GT.
+    """
+
+    @staticmethod
+    def _cat_noise(points, careless=False):
+        if not careless:
+            """
+            Try to get a really rough estimation of density of the 'hole' points.
+            Compute the needed amount of noise points in the rest of the space, to aim for about the same density
+            Get the proportion of hole and noise, and continue with the sampling as usual.
+            """
+            # Compute bounding box
+            min_coords = points.min(axis=0).values
+            max_coords = points.max(axis=0).values
+
+            # Compute a density considering a rectangular volume
+            partial_vol = abs((max_coords - min_coords).prod())
+            m = points.shape[0]
+            noise_vol = 1  # considering a bounding box of size 1 for the noise.
+            # noise_vol = 1 - partial_vol  should be used if we can avoid generating noise over the partial shape
+            n = m * noise_vol / partial_vol
+
+            # Now that we have m and n, we have to scalate them down so that m + n == points.shape[0]
+            s = points.shape[0] / (m + n)
+            # I could do round() instead of floor and ceil, but I don't want to trust a (0.49... + 0.49... == 1) case
+            m = int(np.ceil(m * s))
+            n = points.shape[0] - m  # int(np.floor(n * s))
+        else:
+            # m + n == points.shape[0]
+            m = points.shape[0] // 4
+            n = points.shape[0] - m
+
+        # random quarter of the points
+        hole_pcd, hole_idx = resample_pcd(np.array(points), m)
+        # fill the other part with noise
+        if not careless:
+            # roughly estimate distance between points in point cloud
+            dist_sq = cdist(hole_pcd, hole_pcd, 'sqeuclidean')
+            np.fill_diagonal(dist_sq, np.inf)
+            in_dist = np.mean(np.min(dist_sq, axis=0))
+            # generate a lot of extra noise, so we can discard some to be careful
+            remaining_n = n
+            noise = np.empty(shape=(0, points.shape[1]))  # start with none
+            while True:  # generate, validate and keep the selected noise
+                noise_candidates = np.random.uniform(-1 / 2, 1 / 2, size=(min(2 * remaining_n, n), points.shape[1]))
+                mask = (cdist(noise_candidates, points, 'sqeuclidean') > in_dist).all(axis=1)
+                noise = np.concatenate((noise, noise_candidates[mask]))
+                remaining_n -= mask.sum()
+                if remaining_n <= 0:  # continue until we have enough noise
+                    break
+            noise, _ = resample_pcd(noise, n)  # remove extra noise
+        else:
+            noise = np.random.uniform(-1 / 2, 1 / 2, size=(n, points.shape[1]))
+        noise = noise.astype(np.float32)
+        hole_noise_pcd = np.concatenate((hole_pcd, noise))
+        hole_noise_occ = np.concatenate((np.ones(m), np.zeros(n)))
+
+        # shuffle
+        # np.random.shuffle(hole_noise_pcd)
+        shuffled_idx = np.random.permutation(hole_noise_pcd.shape[0])
+        hole_noise_pcd = hole_noise_pcd[shuffled_idx]
+        hole_noise_occ = hole_noise_occ[shuffled_idx]
+
+        return hole_noise_pcd, hole_noise_occ
+
+    def __getitem__(self, idx):
+        label, partial, complete, restoration, model = super().__getitem__(idx)
+        noise, occ = self._cat_noise(restoration)
+        if (noise.shape != (2048, 3)) and (occ.shape != (2048,)):
+            print(noise.shape, occ.shape)
+        if self.prefix == 'test':
+            return label, partial, noise, complete, restoration, model
+
+        return label, partial, noise, occ, restoration
 
 
 class GeometricBreaksDatasetWithNoise(GeometricBreaksDatasetBase):

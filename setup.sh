@@ -7,6 +7,7 @@ conda install pytorch3d -c pytorch3d
 
 # installing pytorch-scatter. Please make sure torch is not downgraded to CPU.
 conda install pytorch-scatter -c pyg  # TRY THIS FIRST. It shouldn't downgrade torch, for me it didnt at least (But it did when I was trying pytorch 2.x)
+# conda install pytorch-scatter=2.1.1 -c pyg  # USE THIS ONE ONLY IF THE OTHER DOWNGRADE THE TORCH'S CUDA VERSION (You will have to check manually with torch.version.cuda)
 # conda install pytorch_scatter -c conda-forge  # USE THIS ONE ONLY IF THE OTHER TRIED TO DOWNGRADE TORCH.
 
 
