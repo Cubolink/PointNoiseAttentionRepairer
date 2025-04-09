@@ -61,13 +61,15 @@ To train the PointAttN, PointAttNA or PointAttNB models, modify the dataset path
 python train.py -c PointAttNX.yaml
 ```
 
-## 3. Test **(WIP)**
+## 3. Test
 
-### Pretrained models **(WIP)**
+### Pretrained models
+
+You can use the models provided in this [zip file](https://anakena.dcc.uchile.cl/~jocruz/resources/pretrained_models.zip). These were models trained with chs.
 
 ### Test for paper result
 
-To test any PointAttN variation on CHS benchmark, download  the pretrained model and put it into `PointAttN_cd_debug_chs `directory, run:
+To test any PointAttN variation on CHS benchmark, download  the pretrained model and put it into its `log/PointAttN_cd_debug_chs` directory. Ensure it matches the corresponding `cfgs/PointAttNX_chs.yaml`'s _`load_model`_ path, and then run:
 
 ```
 python test_chs.py -c PointAttNX.yaml
