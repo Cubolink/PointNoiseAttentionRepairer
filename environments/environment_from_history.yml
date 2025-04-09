@@ -1,0 +1,36 @@
+name: pointattn2
+channels:
+  - defaults
+dependencies:
+  - torchaudio==0.13.1
+  - torchvision==0.14.1
+  - pytorch==1.13.1
+  - pytorch-cuda=11.7
+  - iopath
+  - fvcore
+  - pytorch3d
+  - pytorch-scatter
+  - trimesh
+  - tensorboardx
+  - scipy
+  - pandas
+  - scikit-image
+  - pyembree
+  - pytest
+  - cython
+  - numpy-base
+  - pillow
+  - imageio
+  - tqdm
+  - pyyaml
+  - matplotlib
+  - numpy
+  - h5py
+  - plyfile
+  - tensorpack
+  - transforms3d
+  - munch
+  - scikit-learn
+  - pykdtree
+  - pymcubes
+prefix: /home/jocruz/miniconda3/envs/pointattn2
