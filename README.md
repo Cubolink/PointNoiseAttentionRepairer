@@ -25,16 +25,37 @@ specifically explored generating only the missing geometry rather than reconstru
 something really useful for repairing archaeological objects.
 
 
-## 1. Environment setup **(WIP)**
+## 1. Environment setup
 
 ### Install related libraries
 
 This code has been tested on Ubuntu 20.04, python 3.10.14, torch 1.13.1 with cuda 11.7, and using CUDA 12.2 in the machine.
-Please install related libraries before running this code:
+Please install related libraries before running this code, we have provided 4 ways of doing this:
 
-**WIP: requirements.txt is outdated :c**
+#### A. Using conda yml files (not recommended)
+
+You can, theoretically, setup the environment with
 ```
-pip install -r requirements.txt
+conda env create -f environments/environment.yml
+```
+
+I wasn't able to replicate the environment in other machines with this method, so just in case I exported other kind of .yml.
+
+Conda files:
+* `environments/environment.yml` was exported with conda, contains all the environment used to run the models.
+* `environments/environment_from_history.yml` was exported with conda --from-history. It contains only the explicitly installed files, but the pip-installed libraries are missing.
+* `environments/environment_no_builds.yml` was exported with conda --no-builds. It also doesn't include the pip-installed libraries.
+
+I provided the `requirements.txt` using `pip freeze` too, but I'm pretty sure it won't ever work.
+
+#### B. Installing all libraries (recommended)
+
+Sadly the only method that worked for me to install in different machines was to manually re-create the environment using `conda` and `pip`. I have provided the exact commands that I used in `setup.sh`.
+**DO NOT RUN THIS SCRIPT DIRECTLY**, you should run each line of the file, step by step, until you reach the end.
+
+You can use this command to look at the file. Of course, it's better to just use a text editor.
+```
+cat setup.sh
 ```
 
 ### Compile Pytorch 3rd-party modules
@@ -45,6 +66,8 @@ please compile Pytorch 3rd-party modules [ChamferDistancePytorch](https://github
 cd $PointAttN_Home/utils/ChamferDistancePytorch/chamfer3D
 python setup.py install
 ```
+
+If you followed the `setup.sh` step by step, you already compiled and installed this module.
 
 ## 2. Train
 
